@@ -3,7 +3,7 @@ node_modules/
 /dist/
 
 # Projects (Separated)
-admin-dashboard/
+# admin-dashboard/ (tracking enabled)
 
 # Environment
 .env
