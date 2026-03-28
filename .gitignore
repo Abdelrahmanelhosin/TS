@@ -1,8 +1,9 @@
 # Dependencies
 node_modules/
-admin-dashboard/node_modules/
 /dist/
-/admin-dashboard/build/
+
+# Projects (Separated)
+admin-dashboard/
 
 # Environment
 .env

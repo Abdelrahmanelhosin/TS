@@ -11,10 +11,10 @@ export class SupabaseAuthGuard implements CanActivate {
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
         const request = context.switchToHttp().getRequest();
-        const authHeader = request.headers['authorization'];
+        const authHeader = request.headers['authorization'] || request.headers['Authorization'];
 
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            throw new UnauthorizedException('Missing or invalid Authorization header');
+            return false;
         }
 
         const token = authHeader.replace('Bearer ', '');
@@ -24,17 +24,17 @@ export class SupabaseAuthGuard implements CanActivate {
             const { data, error } = await this.supabaseService.getClient().auth.getUser(token);
 
             if (error || !data?.user) {
-                console.error('Supabase auth.getUser error:', error);
                 throw new UnauthorizedException(`Invalid or expired token: ${error?.message || 'Unknown'}`);
             }
 
-            // Get profile with role
+            // Get profile with role - selecting only needed fields to avoid hangs on complex enums
             const profile = await this.prisma.profiles.findUnique({
                 where: { id: data.user.id },
+                select: { id: true, role: true }
             });
 
             if (!profile) {
-                throw new UnauthorizedException('Profile not found');
+                throw new UnauthorizedException('Profile not found in database');
             }
 
             // Attach user info to request
@@ -42,14 +42,14 @@ export class SupabaseAuthGuard implements CanActivate {
                 userId: data.user.id,
                 email: data.user.email,
                 role: profile.role,
-                is_researcher: profile.is_researcher,
+                is_researcher: (profile.role as any) === 'researcher' || (profile.role as any) === 'admin',
             };
 
             return true;
         } catch (err: any) {
-            console.error('SupabaseAuthGuard Exception:', err);
+            console.error('SupabaseAuthGuard Error:', err);
             if (err instanceof UnauthorizedException) throw err;
-            throw new UnauthorizedException(`Token verification failed: ${err.message || err}`);
+            throw new UnauthorizedException(`Verification failed: ${err.message || err}`);
         }
     }
 }

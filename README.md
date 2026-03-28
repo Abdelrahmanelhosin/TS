@@ -1,37 +1,30 @@
-# PolTem - Araştırma ve Anket Platformu
+# PolTem - API & Backend
 
-PolTem, araştırmacıların anket oluşturabileceği, kullanıcıların bu anketlere katılarak ödül kazanabileceği kapsamlı bir web platformudur.
+PolTem, araştırmacıların anket oluşturabileceği ve kullanıcı katılım verilerinin yönetildiği merkezi API servisidir.
 
 ## 🚀 Özellikler
 
-- **Admin Paneli:** Kullanıcı yönetimi, anket onaylama/reddetme, istatistik takibi.
-- **Araştırmacı Portalı:** Yeni anket oluşturma, hedef kitle belirleme, CSV matching ile doğrulama.
-- **Kullanıcı Sistemi:** Profil yönetimi, anketlere katılım, ödül bakiye takibi.
-- **CSV Matching:** Google Forms vb. platformlardan gelen verileri sistemdeki katılım kayıtlarıyla eşleştirme.
-- **Ödeme Tablosu:** Onaylanan katılımlar için otomatik bankا (IBAN) ödeme listesi oluşturma.
+- **Survey Management:** Anket oluşturma, onaylama ve تعديل المبالغ.
+- **CSV Matching:** Google Forms verilerini sistemle eşleştirme.
+- **Bank Payment Export:** Onaylanan katılımlar için IBAN listesi oluşturma.
+- **Identity & Auth:** Supabase Auth entegrasyonu.
 
 ## 🛠️ Teknolojiler
 
-- **Backend:** NestJS, Prisma ORM, Supabase (PostgreSQL).
-- **Frontend:** React.js, TailwindCSS, Lucide-React.
-- **Identity & Auth:** Supabase Auth.
+- **Backend:** NestJS
+- **ORM:** Prisma
+- **Database:** Supabase (PostgreSQL)
 
 ## 📦 Kurulum
 
-### 1. Backend
-
 1. `npm install`
-2. `.env` dosyasını oluşturun (Supabase URL, Key و غيره).
+2. `.env` dosyasını oluşturun (Supabase URL, Key).
 3. `npx prisma generate`
 4. `npm run start:dev`
 
-### 2. Admin Dashboard
+## 📄 API Dokümantasyonu
 
-1. `cd admin-dashboard`
-2. `npm install`
-3. `AdminDashboard.js` içindeki `API_BASE_URL` değişkenini güncelleyin.
-4. `npm start`
+Uygulama çalışırken `http://localhost:3005/api` adresinden Swagger dokümantasyonuna ulaşabilirsiniz.
 
-## 📄 Lisans
-
-Bu proje eğitim amaçlı geliştirilmiştir.
+---
+*Not: Admin Dashboard bu depoya dahil değildir.*

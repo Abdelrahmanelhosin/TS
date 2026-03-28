@@ -13,8 +13,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         super({
             jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
             ignoreExpiration: false,
-            // You can also use SUPABASE_JWT_SECRET if you added it, but for now fallback to the same key or what Supabase gives.
-            // Supabase uses the Project JWT Secret which you can find in Settings -> API.
             secretOrKey: configService.get<string>('SUPABASE_JWT_SECRET', 'super-secret-default-key-123'),
         });
     }
@@ -30,11 +28,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         }
 
         return {
-            userId: payload.sub,
+            userId: profile.id,
             email: payload.email,
             role: profile.role,
-            is_researcher: profile.is_researcher
+            is_researcher: profile.role === 'researcher' || profile.role === 'admin'
         };
     }
 }
-

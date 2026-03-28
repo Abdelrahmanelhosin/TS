@@ -16,15 +16,17 @@ export class AdminService {
         }
 
         if (role) {
-            where.role = role;
+            where.role = role as any;
         }
 
-        if (isActive !== undefined) {
-            where.is_active = isActive;
-        }
-
+        // is_active column does not exist in the database
         const [users, total] = await Promise.all([
-            this.prisma.profiles.findMany({ where, skip, take }),
+            this.prisma.profiles.findMany({ 
+                where, 
+                skip, 
+                take,
+                include: { users: { select: { email: true } } } 
+            }),
             this.prisma.profiles.count({ where }),
         ]);
 
@@ -49,12 +51,11 @@ export class AdminService {
     async assignRole(id: string, role: string) {
         const profile = await this.prisma.profiles.findUnique({ where: { id } });
         if (!profile) throw new NotFoundException('User profile not found');
-        return this.prisma.profiles.update({ where: { id }, data: { role } });
+        return this.prisma.profiles.update({ where: { id }, data: { role: role as any } });
     }
 
     async setResearchPermission(id: string, is_researcher: boolean) {
-        const profile = await this.prisma.profiles.findUnique({ where: { id } });
-        if (!profile) throw new NotFoundException('User profile not found');
-        return this.prisma.profiles.update({ where: { id }, data: { is_researcher } });
+        const role = is_researcher ? 'researcher' : 'user';
+        return this.prisma.profiles.update({ where: { id }, data: { role: role as any } });
     }
 }

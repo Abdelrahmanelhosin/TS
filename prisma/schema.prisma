@@ -445,10 +445,13 @@ model users {
   oauth_consents              oauth_consents[]
   one_time_tokens             one_time_tokens[]
   sessions                    sessions[]
+  webauthn_challenges         webauthn_challenges[]
+  webauthn_credentials        webauthn_credentials[]
+  ai_messages                 ai_messages[]
+  audit_logs                  audit_logs[]
   profiles                    profiles?
   submissions                 submissions[]
   surveys                     surveys[]
-  audit_logs                  audit_logs[]
 
   @@index([instance_id])
   @@index([is_anonymous])
@@ -459,26 +462,28 @@ model users {
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model profiles {
-  id                     String    @id @db.Uuid
+  id                     String                  @id @db.Uuid
   full_name              String?
   phone                  String?
-  role                   String?   @default("user")
-  is_researcher          Boolean?  @default(false)
-  balance                Decimal?  @default(0.00) @db.Decimal(10, 2)
-  is_active              Boolean?  @default(true)
+  balance                Decimal?                @default(0.00) @db.Decimal(10, 2)
   iban                   String?
-  bank_name              String?
   full_name_bank         String?
-  created_at             DateTime? @default(now()) @db.Timestamptz(6)
-  updated_at             DateTime? @default(now()) @db.Timestamptz(6)
-  gender                 String?
-  birth_date             DateTime? @db.Date
-  city                   String?
-  education_level        String?
-  occupation             String?
-  video_conference_optin Boolean?  @default(false)
-  tc_identity_number     String?   @db.VarChar(11)
-  users                  users     @relation(fields: [id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  created_at             DateTime?               @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime?               @default(now()) @db.Timestamptz(6)
+  birth_date             DateTime?               @db.Date
+  video_conference_optin Boolean?                @default(false)
+  tc_identity_number     String?                 @db.VarChar(11)
+  education_level        education_level_type?   @default(Lisans)
+  household_income       household_income_level?
+  marital_status         marital_status_type?
+  children_count         child_count_enum?
+  sector_type            sector_enum_type?
+  work_status            work_status_type?
+  role                   user_role               @default(user)
+  bank_name              bank_name_type?
+  occupation             occupation_enum?
+  city                   turkey_city_enum?
+  users                  users                   @relation(fields: [id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@schema("public")
 }
@@ -488,10 +493,10 @@ model submissions {
   id         String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id    String             @db.Uuid
   survey_id  String             @db.Uuid
-  unique_id  String?
   status     submission_status? @default(pending)
-  created_at DateTime?          @default(now()) @db.Timestamptz(6)
   updated_at DateTime?          @default(now()) @db.Timestamptz(6)
+  metadata   Json?              @default("{}")
+  started_at DateTime?          @db.Timestamptz(6)
   surveys    surveys            @relation(fields: [survey_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users      users              @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -501,24 +506,33 @@ model submissions {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model surveys {
-  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at        DateTime      @default(dbgenerated("timezone('utc'::text, now())")) @db.Timestamptz(6)
-  creator_id        String        @db.Uuid
-  title             String
-  description       String?
-  status            String?       @default("active")
-  survey_link       String
-  completion_code   String
-  platform          String?       @default("Google Forms")
-  target_gender     String?       @default("Hepsi")
-  target_age_group  String?       @default("Hepsi")
-  reward_amount     Decimal?      @default(25.0) @db.Decimal
-  estimated_time    Int?          @default(5)
-  target_city       String?       @default("Hepsi")
-  target_education  String?       @default("Hepsi")
-  target_occupation String?       @default("")
-  submissions       submissions[]
-  users             users         @relation(fields: [creator_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                       String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at               DateTime                 @default(dbgenerated("timezone('utc'::text, now())")) @db.Timestamptz(6)
+  creator_id               String                   @db.Uuid
+  title                    String
+  description              String?
+  survey_link              String
+  completion_code          String
+  platform                 String?                  @default("Google Forms")
+  reward_amount            Decimal?                 @default(25.0) @db.Decimal
+  estimated_time           Int?                     @default(5)
+  total_cost               Decimal?                 @db.Decimal
+  status                   survey_status_enum?      @default(pending)
+  target_education         education_level_enum[]
+  target_occupation        occupation_enum[]        @default([])
+  video_conference_optin   Boolean?                 @default(false)
+  target_marital_status    marital_status_enum[]    @default([])
+  target_child_count       child_count_enum[]       @default([])
+  target_position          position_type[]          @default([])
+  target_age_group         age_group_enum[]         @default([])
+  target_employment_status employment_status_enum[] @default([])
+  target_sector            sector_enum[]            @default([])
+  target_income            income_enum[]            @default([])
+  target_gender            gender_type[]            @default([])
+  target_city              turkey_city_enum[]       @default([])
+  ai_messages              ai_messages[]
+  submissions              submissions[]
+  users                    users                    @relation(fields: [creator_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("public")
 }
@@ -530,10 +544,58 @@ model audit_logs {
   action_type String
   target_id   String?
   details     Json?
-
   users       users    @relation(fields: [admin_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("public")
+}
+
+model ai_messages {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  role       String
+  content    String
+  user_id    String   @db.Uuid
+  survey_id  String?  @db.Uuid
+  surveys    surveys? @relation(fields: [survey_id], references: [id], onUpdate: NoAction)
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model webauthn_challenges {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String?  @db.Uuid
+  challenge_type String
+  session_data   Json
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  expires_at     DateTime @db.Timestamptz(6)
+  users          users?   @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([expires_at])
+  @@index([user_id])
+  @@schema("auth")
+}
+
+model webauthn_credentials {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String    @db.Uuid
+  credential_id    Bytes     @unique
+  public_key       Bytes
+  attestation_type String    @default("")
+  aaguid           String?   @db.Uuid
+  sign_count       BigInt    @default(0)
+  transports       Json      @default("[]")
+  backup_eligible  Boolean   @default(false)
+  backed_up        Boolean   @default(false)
+  friendly_name    String    @default("")
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime  @default(now()) @db.Timestamptz(6)
+  last_used_at     DateTime? @db.Timestamptz(6)
+  users            users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id])
+  @@schema("auth")
 }
 
 enum aal_level {
@@ -606,11 +668,343 @@ enum one_time_token_type {
   @@schema("auth")
 }
 
+enum survey_status_enum {
+  pending
+  active
+  paused
+  completed
+  rejected
+
+  @@schema("public")
+}
+
 enum submission_status {
   draft
   pending
   approved
   rejected
+
+  @@schema("public")
+}
+
+enum turkey_city_enum {
+  adana
+  adiyaman
+  afyonkarahisar
+  agri
+  amasya
+  ankara
+  antalya
+  artvin
+  aydin
+  balikesir
+  bilecik
+  bingol
+  bitlis
+  bolu
+  burdur
+  bursa
+  canakkale
+  cankiri
+  corum
+  denizli
+  diyarbakir
+  edirne
+  elazig
+  erzincan
+  erzurum
+  eskisehir
+  gaziantep
+  giresun
+  gumushane
+  hakkari
+  hatay
+  isparta
+  mersin
+  istanbul
+  izmir
+  kars
+  kastamonu
+  kayseri
+  kirklareli
+  kirsehir
+  kocaeli
+  konya
+  kutahya
+  malatya
+  manisa
+  kahramanmaras
+  mardin
+  mugla
+  mus
+  nevsehir
+  nigde
+  ordu
+  rize
+  sakarya
+  samsun
+  siirt
+  sinop
+  sivas
+  tekirdag
+  tokat
+  trabzon
+  tunceli
+  sanliurfa
+  usak
+  van
+  yozgat
+  zonguldak
+  aksaray
+  bayburt
+  karaman
+  kirikkale
+  batman
+  sirnak
+  bartin
+  ardahan
+  igdir
+  yalova
+  karabuk
+  kilis
+  osmaniye
+  duzce
+  hepsi
+
+  @@schema("public")
+}
+
+enum age_group_enum {
+  a18_24   @map("18_24")
+  a25_34   @map("25_34")
+  a35_44   @map("35_44")
+  a45_54   @map("45_54")
+  a55_ustu @map("55_ustu")
+  hepsi
+
+  @@schema("public")
+}
+
+enum education_level_enum {
+  hepsi
+  ilkokul
+  ortaokul
+  lise
+  onlisans
+  lisans
+  yuksek_lisans
+  doktora
+
+  @@schema("public")
+}
+
+enum education_level_type {
+  Ilkokul       @map("İlkokul")
+  Ortaokul
+  Lise
+  Onlisans      @map("Önlisans")
+  Lisans
+  Yuksek_Lisans @map("Yüksek Lisans")
+  Doktora
+
+  @@schema("public")
+}
+
+enum position_type {
+  girisimci_isletme_sahibi
+  ust_duzey_yonetici
+  orta_duzey_yonetici
+  alt_duzey_yonetici_takim_lideri
+  calisan
+
+  @@schema("public")
+}
+
+enum sector_enum {
+  ozel_sektor
+  kamu_sektoru
+  isletme_sahibi_esnaf_zanaatkarkendi_isi
+
+  @@schema("public")
+}
+
+enum sector_enum_type {
+  Ozel_sektor                    @map("Özel sektör")
+  Kamu_sektoru                   @map("Kamu sektörü")
+  Isletme_sahibi_Esnaf_Zanaatkar @map("İşletme sahibi / Esnaf / Zanaatkâr / Kendi işi")
+
+  @@schema("public")
+}
+
+enum occupation_enum {
+  akademisyen
+  ogretmen
+  doktor
+  dis_hekimi
+  hemsire
+  eczaci
+  psikolog
+  avukat
+  hakim
+  polis
+  asker
+  muhendis
+  mimar
+  muhasebeci_mali_musavir
+  yazilimci_bilisim_uzmani
+  bankacilik_finans_uzmani
+  insan_kaynaklari_uzmani
+  satis_pazarlama_halkla_iliskiler
+  teknisyen_tekniker_tasarimci
+  serbest_meslek
+  esnaf
+  ciftci
+  isci
+  diger
+
+  @@schema("public")
+}
+
+enum marital_status_type {
+  evli
+  bekar
+  belirtmek_istemiyor
+
+  @@schema("public")
+}
+
+enum marital_status_enum {
+  evli
+  bekar
+  belirtmek_istemiyor
+
+  @@schema("public")
+}
+
+enum work_status_type {
+  Ogrenci    @map("Öğrenci")
+  Ev_Hanimi  @map("Ev Hanımı")
+  Calisiyor  @map("Çalışıyor")
+  Calismiyor @map("Çalışmıyor")
+  calisiyor
+  calismiyor
+  ogrenci
+  ev_hanimi
+  emekli
+
+  @@schema("public")
+}
+
+enum user_role {
+  user
+  researcher
+  admin
+
+  @@schema("public")
+}
+
+enum bank_name_type {
+  Akbank
+  Denizbank
+  Garanti_BBVA       @map("Garanti BBVA")
+  Halkbank
+  Kuveyt_Turk        @map("Kuveyt Turk")
+  QNB_Finansbank     @map("QNB Finansbank")
+  Turkiye_Is_Bankasi @map("Turkiye Is Bankasi")
+  VakifBank
+  Yapi_Kredi         @map("Yapi Kredi")
+  Ziraat_Bankasi     @map("Ziraat Bankasi")
+  Diger
+
+  @@schema("public")
+}
+
+enum income_enum {
+  i0_40000       @map("0_40000")
+  i40001_80000   @map("40001_80000")
+  i80001_120000  @map("80001_120000")
+  i120001_160000 @map("120001_160000")
+  i160001_uzeri  @map("160001_uzeri")
+
+  @@schema("public")
+}
+
+enum household_income_level {
+  l0_40000       @map("0 - 40.000 TL")
+  l40001_80000   @map("40.001 - 80.000 TL")
+  l80001_120000  @map("80.001 - 120.000 TL")
+  l120001_160000 @map("120.001 - 160.000 TL")
+  l160001_uzeri  @map("160.001 TL ve üzeri")
+
+  @@schema("public")
+}
+
+enum child_count_enum {
+  c0      @map("0")
+  c1      @map("1")
+  c2      @map("2")
+  c3      @map("3")
+  c4      @map("4")
+  c5_plus @map("5+")
+
+  @@schema("public")
+}
+
+enum gender_type {
+  erkek
+  kadin
+  diger
+  hepsi
+
+  @@schema("public")
+}
+
+enum employment_status_enum {
+  calisiyor
+  calismiyor
+  ogrenci
+  emekli
+  ev_hanimi
+
+  @@schema("public")
+}
+
+enum income_level_type {
+  i0_40000       @map("0_40000")
+  i40001_80000   @map("40001_80000")
+  i80001_120000  @map("80001_120000")
+  i120001_160000 @map("120001_160000")
+  i160001_uzeri  @map("160001_uzeri")
+
+  @@schema("public")
+}
+
+enum income_range_enum {
+  r0_40000       @map("0 - 40.000 TL")
+  r40001_80000   @map("40.001 - 80.000 TL")
+  r80001_120000  @map("80.001 - 120.000 TL")
+  r120001_160000 @map("120.001 - 160.000 TL")
+  r160001_uzeri  @map("160.001 TL ve üzeri")
+
+  @@schema("public")
+}
+
+enum survey_status {
+  draft
+  active
+  paused
+  completed
+  rejected
+
+  @@schema("public")
+}
+
+enum target_position_enum {
+  Giri_imci_____letme_sahibi        @map("Girişimci / İşletme sahibi")
+  st_d_zey_y_netici                 @map("Üst düzey yönetici")
+  Orta_d_zey_y_netici               @map("Orta düzey yönetici")
+  Alt_d_zey_y_netici___Tak_m_lideri @map("Alt düzey yönetici / Takım lideri")
+  al__an                            @map("Çalışan")
 
   @@schema("public")
 }

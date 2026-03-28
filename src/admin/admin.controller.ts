@@ -9,7 +9,7 @@ import { Roles } from '../auth/roles.decorator';
 @ApiTags('admin')
 @ApiBearerAuth()
 @UseGuards(SupabaseAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@Roles('admin')
 @Controller('admin')
 export class AdminController {
     constructor(private readonly adminService: AdminService) { }

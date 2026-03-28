@@ -6,6 +6,7 @@ import { UsersModule } from './users/users.module';
 import { SurveysModule } from './surveys/surveys.module';
 import { AdminModule } from './admin/admin.module';
 import { SupabaseModule } from './supabase/supabase.module';
+// import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -17,6 +18,8 @@ import { SupabaseModule } from './supabase/supabase.module';
     UsersModule,
     SurveysModule,
     AdminModule,
+    // SupabaseModule,
+    // AiModule,
     SupabaseModule,
   ],
   controllers: [],

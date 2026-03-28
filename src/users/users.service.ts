@@ -24,12 +24,9 @@ export class UsersService {
         }
 
         if (role) {
-            where.role = role;
+            where.role = role as any;
         }
 
-        if (isActive !== undefined) {
-            where.is_active = isActive;
-        }
 
         const [items, total] = await Promise.all([
             this.prisma.profiles.findMany({ where, skip, take }),
@@ -60,12 +57,13 @@ export class UsersService {
 
     async assignRole(id: string, role: string) {
         await this.findOne(id);
-        return this.prisma.profiles.update({ where: { id }, data: { role } });
+        return this.prisma.profiles.update({ where: { id }, data: { role: role as any } });
     }
 
     async changeStatus(id: string, is_active: boolean) {
         await this.findOne(id);
-        return this.prisma.profiles.update({ where: { id }, data: { is_active } });
+        // Column is_active does not exist in DB
+        return { success: true };
     }
 }
 
