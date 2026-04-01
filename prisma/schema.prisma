@@ -517,6 +517,7 @@ model surveys {
   reward_amount            Decimal?                 @default(25.0) @db.Decimal
   estimated_time           Int?                     @default(5)
   total_cost               Decimal?                 @db.Decimal
+  target_count             Int?                     @default(0)
   status                   survey_status_enum?      @default(pending)
   target_education         education_level_enum[]
   target_occupation        occupation_enum[]        @default([])
