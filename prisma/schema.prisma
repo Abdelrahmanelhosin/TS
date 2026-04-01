@@ -824,7 +824,7 @@ enum position_type {
 enum sector_enum {
   ozel_sektor
   kamu_sektoru
-  isletme_sahibi_esnaf_zanaatkarkendi_isi
+  isletme_sahibi_esnaf_zanaatkar_kendi_isi
 
   @@schema("public")
 }
