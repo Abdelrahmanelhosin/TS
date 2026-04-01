@@ -27,4 +27,4 @@ PolTem, araştırmacıların anket oluşturabileceği ve kullanıcı katılım v
 Uygulama çalışırken `http://localhost:3005/api` adresinden Swagger dokümantasyonuna ulaşabilirsiniz.
 
 ---
-*Not: Admin Dashboard bu depoya dahil değildir.* .
+*Not: Admin Dashboard bu depoya dahil değildir.*
