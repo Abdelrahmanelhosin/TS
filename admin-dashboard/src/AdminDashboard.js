@@ -565,7 +565,7 @@ export default function AdminDashboard() {
         },
         formLink: s.survey_link,
         completionCode: s.completion_code,
-        targetCount: s.target_count,
+        targetCount: s.target_audience,
         reachedCount: s._count?.submissions || 0,
         participants: []
       })));
@@ -695,7 +695,7 @@ export default function AdminDashboard() {
       setEditMarital(normalizeArray(selectedRequest.target_marital_status || selectedRequest.target_marital || selectedRequest.marital_status, MARITAL_OPTIONS));
       setEditChildren(normalizeArray(selectedRequest.target_child_count || selectedRequest.target_children || selectedRequest.children_count, CHILDREN_OPTIONS));
 
-      setTargetCount(selectedRequest.target_count || '');
+      setTargetCount(selectedRequest.target_audience || '');
       setUseCustomPricing(false);
 
       const reward = selectedRequest.reward_amount ? Number(selectedRequest.reward_amount) : null;
@@ -883,7 +883,7 @@ export default function AdminDashboard() {
         body: JSON.stringify({
           reward_amount: reward,
           estimated_time: parsedTime,
-          target_count: parsedTarget,
+          target_audience: parsedTarget,
           target_gender: editGender.map(s => s.toLowerCase() === 'hepsi' ? 'hepsi' : s),
           target_age_group: editAge.map(s => s.toLowerCase() === 'hepsi' ? 'hepsi' : s),
           target_city: editCity.map(s => s.toLowerCase() === 'hepsi' ? 'hepsi' : s),
@@ -906,7 +906,7 @@ export default function AdminDashboard() {
 
       if (response.ok) { // Changed res to response to match variable name
         // Hedef sayısını da güncelleyelim (Ayrı bir endpoint ise oraya da istek atılabilir)
-        // Mevcut API'de approve içinde reward ve time var, target_count schema'da var mı bakılmalı
+        // Mevcut API'de approve içinde reward ve time var, target_audience schema'da var mı bakılmalı
         alert('Anket başarıyla onaylandı ve yayımlandı!');
         setSelectedRequest(null);
         setTargetCount('');
@@ -2402,7 +2402,7 @@ export default function AdminDashboard() {
                     <div className="grid grid-cols-2 gap-6 mb-10">
                       <div className="bg-[#0B1121] border border-[#1A233A] rounded-[2rem] p-6 text-center shadow-inner">
                         <p className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Hedef Sayı</p>
-                        <p className="text-4xl font-black text-slate-300">{selectedSurvey.target_count || selectedSurvey.targetCount}</p>
+                        <p className="text-4xl font-black text-slate-300">{selectedSurvey.target_audience || selectedSurvey.targetCount}</p>
                       </div>
                       <div className="bg-[#0B1121] border border-orange-500/30 rounded-[2rem] p-6 text-center relative overflow-hidden shadow-[0_0_20px_rgba(249,115,22,0.1)]">
                         <div className="absolute inset-0 bg-orange-500/10"></div>
