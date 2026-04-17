@@ -33,7 +33,6 @@ export class AdminController {
             take ? parseInt(take, 10) : undefined,
             search,
             role,
-            isActive !== undefined ? isActive === 'true' : undefined,
         );
     }
 

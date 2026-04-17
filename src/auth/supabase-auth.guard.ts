@@ -38,6 +38,8 @@ export class SupabaseAuthGuard implements CanActivate {
             }
 
             // Attach user info to request
+            console.log(`Guard processing: User ID: ${data.user.id}, Email: ${data.user.email}, Role: ${profile.role}`);
+            
             request.user = {
                 userId: data.user.id,
                 email: data.user.email,
@@ -47,7 +49,7 @@ export class SupabaseAuthGuard implements CanActivate {
 
             return true;
         } catch (err: any) {
-            console.error('SupabaseAuthGuard Error:', err);
+            console.error('SupabaseAuthGuard Error:', err.message || err);
             if (err instanceof UnauthorizedException) throw err;
             throw new UnauthorizedException(`Verification failed: ${err.message || err}`);
         }

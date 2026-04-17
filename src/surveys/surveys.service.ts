@@ -17,14 +17,27 @@ export class SurveysService {
     }
 
     async findAllApproved() {
-        return this.prisma.surveys.findMany({
-            where: { status: 'active' },
-            include: {
-                users: {
-                    select: { email: true }
-                }
-            }
-        });
+        const surveys = await this.prisma.$queryRawUnsafe<any[]>(`
+            SELECT 
+                s.*,
+                s.status::text as status,
+                s.target_education::text[] as target_education,
+                s.target_occupation::text[] as target_occupation,
+                s.target_marital_status::text[] as target_marital_status,
+                s.target_child_count::text[] as target_child_count,
+                s.target_position::text[] as target_position,
+                s.target_age_group::text[] as target_age_group,
+                s.target_employment_status::text[] as target_employment_status,
+                s.target_sector::text[] as target_sector,
+                s.target_income::text[] as target_income,
+                s.target_gender::text[] as target_gender,
+                s.target_city::text[] as target_city,
+                u.email as creator_email
+            FROM public.surveys s
+            JOIN auth.users u ON s.creator_id = u.id
+            WHERE s.status = 'active'
+        `);
+        return surveys.map(s => ({ ...s, users: { email: s.creator_email }, participants: [] }));
     }
 
     async findAllForUser(userId: string) {
@@ -45,8 +58,8 @@ export class SurveysService {
                     { OR: [{ target_city: { has: 'hepsi' } }, { target_city: { has: (profile as any).city } }, { target_city: { isEmpty: true } }] },
                     { OR: [{ target_education: { has: (profile as any).education_level } }, { target_education: { isEmpty: true } }] },
                     { OR: [{ target_employment_status: { has: (profile as any).work_status } }, { target_employment_status: { isEmpty: true } }] },
-                    { OR: [{ target_sector: { has: (profile as any).sector_type } }, { target_sector: { isEmpty: true } }] },
-                    { OR: [{ target_income: { has: (profile as any).household_income } }, { target_income: { isEmpty: true } }] },
+                    { OR: [{ target_sector: { path: '$', string_contains: 'ozel_sektor' } }, { target_sector: { equals: [] } }, { target_sector: { equals: null } }] as any },
+                    { OR: [{ target_income: { path: '$', string_contains: '0_40000' } }, { target_income: { equals: [] } }, { target_income: { equals: null } }] as any },
                     { OR: [{ target_marital_status: { has: (profile as any).marital_status } }, { target_marital_status: { isEmpty: true } }] },
                     { OR: [{ target_child_count: { has: (profile as any).children_count } }, { target_child_count: { isEmpty: true } }] }
                 ]
@@ -61,31 +74,65 @@ export class SurveysService {
     }
 
     async findPending() {
-        return this.prisma.surveys.findMany({
-            where: { status: 'pending' as any },
-            include: {
-                users: {
-                    select: { email: true }
-                },
-                _count: {
-                    select: { submissions: true }
-                }
-            }
-        });
+        const surveys = await this.prisma.$queryRawUnsafe<any[]>(`
+            SELECT 
+                s.*,
+                s.status::text as status,
+                s.target_education::text[] as target_education,
+                s.target_occupation::text[] as target_occupation,
+                s.target_marital_status::text[] as target_marital_status,
+                s.target_child_count::text[] as target_child_count,
+                s.target_position::text[] as target_position,
+                s.target_age_group::text[] as target_age_group,
+                s.target_employment_status::text[] as target_employment_status,
+                s.target_sector::text[] as target_sector,
+                s.target_income::text[] as target_income,
+                s.target_gender::text[] as target_gender,
+                s.target_city::text[] as target_city,
+                u.email as creator_email,
+                (SELECT COUNT(*)::int FROM public.submissions sub WHERE sub.survey_id = s.id) as participant_count
+            FROM public.surveys s
+            JOIN auth.users u ON s.creator_id = u.id
+            WHERE s.status = 'pending'
+        `);
+
+        return surveys.map(s => ({
+            ...s,
+            users: { email: s.creator_email },
+            _count: { submissions: s.participant_count },
+            participants: [] // Ensure frontend doesn't crash on .map()
+        }));
     }
 
     async findAllForAdmin() {
-        return this.prisma.surveys.findMany({
-            include: {
-                users: {
-                    select: { email: true }
-                },
-                _count: {
-                    select: { submissions: true }
-                }
-            },
-            orderBy: { created_at: 'desc' }
-        });
+        const surveys = await this.prisma.$queryRawUnsafe<any[]>(`
+            SELECT 
+                s.*,
+                s.status::text as status,
+                s.target_education::text[] as target_education,
+                s.target_occupation::text[] as target_occupation,
+                s.target_marital_status::text[] as target_marital_status,
+                s.target_child_count::text[] as target_child_count,
+                s.target_position::text[] as target_position,
+                s.target_age_group::text[] as target_age_group,
+                s.target_employment_status::text[] as target_employment_status,
+                s.target_sector::text[] as target_sector,
+                s.target_income::text[] as target_income,
+                s.target_gender::text[] as target_gender,
+                s.target_city::text[] as target_city,
+                u.email as creator_email,
+                (SELECT COUNT(*)::int FROM public.submissions sub WHERE sub.survey_id = s.id) as participant_count
+            FROM public.surveys s
+            JOIN auth.users u ON s.creator_id = u.id
+            ORDER BY s.created_at DESC
+        `);
+
+        return surveys.map(s => ({
+            ...s,
+            users: { email: s.creator_email },
+            _count: { submissions: s.participant_count },
+            participants: [] // Ensure frontend doesn't crash on .map()
+        }));
     }
 
     async getStats() {
@@ -119,40 +166,88 @@ export class SurveysService {
     }
 
     async getRecentPending() {
-        return this.prisma.surveys.findMany({
-            where: { status: 'pending' as any },
-            orderBy: { created_at: 'desc' },
-            take: 10,
-            include: {
-                users: {
-                    select: { email: true }
-                }
-            }
-        });
+        const surveys = await this.prisma.$queryRawUnsafe<any[]>(`
+            SELECT 
+                s.*,
+                s.status::text as status,
+                s.target_education::text[] as target_education,
+                s.target_occupation::text[] as target_occupation,
+                s.target_marital_status::text[] as target_marital_status,
+                s.target_child_count::text[] as target_child_count,
+                s.target_position::text[] as target_position,
+                s.target_age_group::text[] as target_age_group,
+                s.target_employment_status::text[] as target_employment_status,
+                s.target_sector::text[] as target_sector,
+                s.target_income::text[] as target_income,
+                s.target_gender::text[] as target_gender,
+                s.target_city::text[] as target_city,
+                u.email as creator_email
+            FROM public.surveys s
+            JOIN auth.users u ON s.creator_id = u.id
+            WHERE s.status = 'pending'
+            ORDER BY s.created_at DESC
+            LIMIT 10
+        `);
+        return surveys.map(s => ({ ...s, users: { email: s.creator_email }, participants: [] }));
     }
 
     async findOne(id: string) {
-        const survey = await this.prisma.surveys.findUnique({
-            where: { id },
-            include: {
-                submissions: {
-                    include: {
-                        users: {
-                            include: {
-                                profiles: true
-                            }
-                        }
-                    },
-                    take: 50,
-                    orderBy: { updated_at: 'desc' }
-                },
-                _count: {
-                    select: { submissions: true }
-                }
-            }
-        });
-        if (!survey) throw new NotFoundException('Survey not found');
-        return survey;
+        const surveys = await this.prisma.$queryRawUnsafe<any[]>(`
+            SELECT 
+                s.*,
+                s.status::text as status,
+                s.target_education::text[] as target_education,
+                s.target_occupation::text[] as target_occupation,
+                s.target_marital_status::text[] as target_marital_status,
+                s.target_child_count::text[] as target_child_count,
+                s.target_position::text[] as target_position,
+                s.target_age_group::text[] as target_age_group,
+                s.target_employment_status::text[] as target_employment_status,
+                s.target_sector::text[] as target_sector,
+                s.target_income::text[] as target_income,
+                s.target_gender::text[] as target_gender,
+                s.target_city::text[] as target_city,
+                u.email as creator_email,
+                (SELECT COUNT(*)::int FROM public.submissions sub WHERE sub.survey_id = s.id) as submission_count
+            FROM public.surveys s
+            JOIN auth.users u ON s.creator_id = u.id
+            WHERE s.id = $1::uuid
+        `, id);
+
+        if (!surveys || surveys.length === 0) throw new NotFoundException('Survey not found');
+        
+        const survey = surveys[0];
+
+        // Get submissions separately
+        // Get submissions separately via Raw SQL to avoid Prisma sync issues
+        const submissions = await this.prisma.$queryRawUnsafe<any[]>(`
+            SELECT 
+                sub.id, sub.user_id, sub.survey_id, sub.status::text as status, 
+                sub.updated_at, sub.metadata, sub.created_at,
+                u.email as "userEmail"
+            FROM public.submissions sub
+            JOIN auth.users u ON sub.user_id = u.id
+            WHERE sub.survey_id = $1::uuid
+            ORDER BY sub.updated_at DESC
+            LIMIT 50
+        `, id);
+
+        const mappedSubmissions = submissions.map(sub => ({
+            ...sub,
+            users: { email: sub.userEmail }
+        }));
+
+        return {
+            ...survey,
+            users: { email: survey.creator_email },
+            submissions: mappedSubmissions,
+            _count: { submissions: survey.submission_count },
+            participants: mappedSubmissions.map(sub => ({
+                userId: sub.user_id,
+                date: sub.updated_at,
+                status: sub.status
+            }))
+        };
     }
 
     async findByResearcher(creator_id: string) {
@@ -313,27 +408,32 @@ export class SurveysService {
 
     async getSubmissions(surveyId: string) {
         await this.findOne(surveyId);
-        return this.prisma.submissions.findMany({
-            where: { survey_id: surveyId },
-            include: {
-                users: {
-                    select: {
-                        email: true,
-                        profiles: {
-                            select: {
-                                full_name: true,
-                                phone: true,
-                                tc_identity_number: true,
-                                bank_name: true,
-                                iban: true,
-                                full_name_bank: true,
-                            }
-                        }
-                    }
+        const subs = await this.prisma.$queryRawUnsafe<any[]>(`
+            SELECT 
+                sub.*, sub.status::text as status,
+                u.email,
+                p.full_name, p.phone, p.tc_identity_number, p.bank_name::text as bank_name, p.iban, p.full_name_bank
+            FROM public.submissions sub
+            JOIN auth.users u ON sub.user_id = u.id
+            LEFT JOIN public.profiles p ON sub.user_id = p.id
+            WHERE sub.survey_id = $1::uuid
+            ORDER BY sub.updated_at DESC
+        `, surveyId);
+
+        return subs.map(s => ({
+            ...s,
+            users: {
+                email: s.email,
+                profiles: {
+                    full_name: s.full_name,
+                    phone: s.phone,
+                    tc_identity_number: s.tc_identity_number,
+                    bank_name: s.bank_name,
+                    iban: s.iban,
+                    full_name_bank: s.full_name_bank
                 }
-            },
-            orderBy: { updated_at: 'desc' }
-        });
+            }
+        }));
     }
 
     async updateSubmissionStatus(submissionId: string, status: 'approved' | 'rejected') {
@@ -408,43 +508,40 @@ export class SurveysService {
     }
 
     async getPaymentTable(surveyId: string) {
-        const survey = await this.findOne(surveyId);
-        const submissions = await this.prisma.submissions.findMany({
-            where: { survey_id: surveyId, status: 'approved' },
-            include: {
-                users: {
-                    select: {
-                        email: true,
-                        profiles: {
-                            select: {
-                                full_name: true,
-                                tc_identity_number: true,
-                                bank_name: true,
-                                iban: true,
-                                full_name_bank: true,
-                                role: true
-                            }
-                        }
-                    }
-                }
-            }
-        });
+        const surveys = await this.prisma.$queryRawUnsafe<any[]>(`
+            SELECT id, title, reward_amount::text as reward_amount, total_cost::text as total_cost
+            FROM public.surveys WHERE id = $1::uuid
+        `, surveyId);
+        
+        if (!surveys || surveys.length === 0) throw new NotFoundException('Survey not found');
+        const survey = surveys[0];
+
+        const subs = await this.prisma.$queryRawUnsafe<any[]>(`
+            SELECT 
+                sub.*, sub.status::text as status,
+                u.email,
+                p.full_name, p.tc_identity_number, p.bank_name::text as bank_name, p.iban, p.full_name_bank, p.role::text as role
+            FROM public.submissions sub
+            LEFT JOIN auth.users u ON sub.user_id = u.id
+            LEFT JOIN public.profiles p ON sub.user_id = p.id
+            WHERE sub.survey_id = $1::uuid AND sub.status = 'approved'
+        `, surveyId);
 
         return {
             survey_title: survey.title,
             reward_amount: survey.reward_amount,
-            rows: submissions.map(s => {
+            rows: subs.map(s => {
                 const metadata = (s.metadata as any) || {};
                 const isShadow = metadata.shadow === true || metadata.new_shadow === true;
                 const participantCode = metadata.unique_id || '';
                 
                 return {
-                    full_name: isShadow ? `Guest (Code: ${participantCode})` : (s.users?.profiles?.full_name || s.users?.profiles?.full_name_bank || s.users?.email || '—'),
-                    tc_identity_number: isShadow ? '—' : (s.users?.profiles?.tc_identity_number || '—'),
-                    bank_name: isShadow ? '—' : (s.users?.profiles?.bank_name || '—'),
-                    iban: isShadow ? '—' : (s.users?.profiles?.iban || '—'),
-                    full_name_bank: isShadow ? '—' : (s.users?.profiles?.full_name_bank || '—'),
-                    email: isShadow ? '—' : (s.users?.email || '—'),
+                    full_name: isShadow ? `Guest (Code: ${participantCode})` : (s.full_name || s.full_name_bank || s.email || '—'),
+                    tc_identity_number: isShadow ? '—' : (s.tc_identity_number || '—'),
+                    bank_name: isShadow ? '—' : (s.bank_name || '—'),
+                    iban: isShadow ? '—' : (s.iban || '—'),
+                    full_name_bank: isShadow ? '—' : (s.full_name_bank || '—'),
+                    email: isShadow ? '—' : (s.email || '—'),
                     reward_amount: survey.reward_amount,
                     is_shadow: isShadow,
                     participant_code: participantCode
@@ -616,13 +713,13 @@ export class SurveysService {
             where: { id: surveyId }
         });
 
-        if (!survey || !survey.target_count || survey.status === 'completed') return;
+        if (!survey || !(survey as any).target_count || survey.status === 'completed') return;
 
         const approvedCount = await this.prisma.submissions.count({
             where: { survey_id: surveyId, status: 'approved' }
         });
 
-        if (approvedCount >= survey.target_count) {
+        if (approvedCount >= (survey as any).target_count) {
             await this.prisma.surveys.update({
                 where: { id: surveyId },
                 data: { status: 'completed' }

@@ -18,6 +18,8 @@ export class RolesGuard implements CanActivate {
         const userRole = user?.role?.toString()?.toLowerCase();
         
         const hasRole = requiredRoles.some(role => role.toLowerCase() === userRole);
+        console.log(`RolesGuard processing: Required: ${requiredRoles}, Current: ${userRole}, HasRole: ${hasRole}`);
+        
         if (!hasRole) {
             throw new UnauthorizedException(`Yetersiz yetki. Gerekli rol: ${requiredRoles.join(', ')}. Mevcut rol: ${userRole}`);
         }

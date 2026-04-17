@@ -57,18 +57,31 @@ const DB_TO_DISPLAY = {
   // age_group_enum (Prisma mapped identifiers)
   a18_24: '18-24', a25_34: '25-34', a35_44: '35-44', a45_54: '45-54', a55_ustu: '55+',
   '18_24': '18-24', '25_34': '25-34', '35_44': '35-44', '45_54': '45-54', '55_ustu': '55+',
+  // sector_enum (raw DB values from SQL)
+  ozel_sektor: 'Özel Sektör', kamu_sektoru: 'Kamu Sektörü', isletme_sahibi_esnaf_zanaatkar_kendi_isi: 'İşletme Sahibi / Esnaf / Zanaatkâr / Kendi İşi',
   // sector_enum_type (profiles - Prisma identifiers)
   Ozel_sektor: 'Özel Sektör', Kamu_sektoru: 'Kamu Sektörü', Isletme_sahibi_Esnaf_Zanaatkar: 'İşletme Sahibi / Esnaf / Zanaatkâr / Kendi İşi',
   // position_type
   girisimci_isletme_sahibi: 'Girişimci / İşletme Sahibi', ust_duzey_yonetici: 'Üst Düzey Yönetici', orta_duzey_yonetici: 'Orta Düzey Yönetici', alt_duzey_yonetici_takim_lideri: 'Alt Düzey Yön. / Takım Lideri', calisan: 'Çalışan',
   // marital_status_type / marital_status_enum
   evli: 'Evli', bekar: 'Bekar', belirtmek_istemiyor: 'Belirtmek İstemiyor',
-  // child_count_enum (Prisma mapped identifiers)
+  // child_count_enum (Prisma mapped + raw DB values)
   c0: '0', c1: '1', c2: '2', c3: '3', c4: '4', c5_plus: '5+',
+  '0': '0', '1': '1', '2': '2', '3': '3', '4': '4', '5+': '5+',
+  // income_enum (raw DB values from SQL)
+  '0_40000': '0 - 40.000 TL', '40001_80000': '40.001 - 80.000 TL', '80001_120000': '80.001 - 120.000 TL', '120001_160000': '120.001 - 160.000 TL', '160001_uzeri': '160.001 TL ve üzeri',
   // income_enum (Prisma mapped identifiers - surveys)
   i0_40000: '0 - 40.000 TL', i40001_80000: '40.001 - 80.000 TL', i80001_120000: '80.001 - 120.000 TL', i120001_160000: '120.001 - 160.000 TL', i160001_uzeri: '160.001 TL ve üzeri',
   // household_income_level (Prisma mapped identifiers - profiles)
   l0_40000: '0 - 40.000 TL', l40001_80000: '40.001 - 80.000 TL', l80001_120000: '80.001 - 120.000 TL', l120001_160000: '120.001 - 160.000 TL', l160001_uzeri: '160.001 TL ve üzeri',
+  // work_status (raw DB values)
+  calisiyor: 'Çalışıyor', calismiyor: 'Çalışmıyor', ogrenci: 'Öğrenci', ev_hanimi: 'Ev Hanımı', emekli: 'Emekli',
+  Calisiyor: 'Çalışıyor', Calismiyor: 'Çalışmıyor', Ogrenci: 'Öğrenci', Ev_Hanimi: 'Ev Hanımı',
+  // education_level_type (raw DB / Prisma identifiers)
+  Ilkokul: 'İlkokul', Ortaokul: 'Ortaokul', Lise: 'Lise', Onlisans: 'Önlisans', Lisans: 'Lisans', Yuksek_Lisans: 'Yüksek Lisans', Doktora: 'Doktora',
+  ilkokul: 'İlkokul', ortaokul: 'Ortaokul', lise: 'Lise', onlisans: 'Önlisans', lisans: 'Lisans', yuksek_lisans: 'Yüksek Lisans', doktora: 'Doktora',
+  // occupation_enum (raw DB values)
+  akademisyen: 'Akademisyen', ogretmen: 'Öğretmen', doktor: 'Doktor', dis_hekimi: 'Diş Hekimi', hemsire: 'Hemşire', eczaci: 'Eczacı', psikolog: 'Psikolog', avukat: 'Avukat', hakim: 'Hakim', polis: 'Polis', asker: 'Asker', muhendis: 'Mühendis', mimar: 'Mimar', muhasebeci_mali_musavir: 'Muhasebeci / Mali Müşavir', yazilimci_bilisim_uzmani: 'Yazılımcı / Bilişim Uzmanı', bankacilik_finans_uzmani: 'Bankacılık / Finans Uzmanı', insan_kaynaklari_uzmani: 'İnsan Kaynakları Uzmanı', satis_pazarlama_halkla_iliskiler: 'Satış / Pazarlama / H.İlişkiler', teknisyen_tekniker_tasarimci: 'Teknisyen / Tekniker / Tasarımcı', serbest_meslek: 'Serbest Meslek', esnaf: 'Esnaf', ciftci: 'Çiftçi', isci: 'İşçi',
   // city (DB stores lowercase ASCII)
   adana: 'Adana', adiyaman: 'Adıyaman', afyonkarahisar: 'Afyonkarahisar', agri: 'Ağrı', amasya: 'Amasya', ankara: 'Ankara', antalya: 'Antalya', artvin: 'Artvin', aydin: 'Aydın', balikesir: 'Balıkesir',
   bilecik: 'Bilecik', bingol: 'Bingöl', bitlis: 'Bitlis', bolu: 'Bolu', burdur: 'Burdur', bursa: 'Bursa', canakkale: 'Çanakkale', cankiri: 'Çankırı', corum: 'Çorum', denizli: 'Denizli',
@@ -78,6 +91,7 @@ const DB_TO_DISPLAY = {
   nigde: 'Niğde', ordu: 'Ordu', rize: 'Rize', sakarya: 'Sakarya', samsun: 'Samsun', siirt: 'Siirt', sinop: 'Sinop', sivas: 'Sivas', tekirdag: 'Tekirdağ', tokat: 'Tokat',
   trabzon: 'Trabzon', tunceli: 'Tunceli', sanliurfa: 'Şanlıurfa', usak: 'Uşak', van: 'Van', yozgat: 'Yozgat', zonguldak: 'Zonguldak', aksaray: 'Aksaray', bayburt: 'Bayburt', karaman: 'Karaman',
   kirikkale: 'Kırikkale', batman: 'Batman', sirnak: 'Şırnak', bartin: 'Bartın', ardahan: 'Ardahan', igdir: 'Iğdır', yalova: 'Yalova', karabuk: 'Karabük', kilis: 'Kilis', osmaniye: 'Osmaniye', duzce: 'Düzce',
+  hepsi: 'Hepsi',
 };
 
 const STATUS_MAP = {
@@ -602,14 +616,14 @@ export default function AdminDashboard() {
       ]);
 
       const data = await res.json();
-      const pData = await pRes.json();
-      const payData = await payRes.json();
+      const pData = await pRes.json().catch(() => []);
+      const payData = await payRes.json().catch(() => []);
 
       const enriched = {
         ...data,
-        participants: pData,
-        paymentTable: payData,
-        reachedCount: data._count?.submissions || 0 // CRITICAL: Fix disappearing items
+        participants: Array.isArray(pData) ? pData : (Array.isArray(data.participants) ? data.participants : []),
+        paymentTable: (payData && payData.rows) ? payData : { rows: [] },
+        reachedCount: data._count?.submissions || 0
       };
       setAuditSurvey(enriched);
       setSurveys(prev => prev.map(s => s.id === surveyId ? enriched : s));
@@ -1278,14 +1292,14 @@ export default function AdminDashboard() {
       });
       if (res.ok) {
         const data = await res.json();
-        setPayments(data.rows.map(r => ({
+        setPayments((data && data.rows && Array.isArray(data.rows)) ? data.rows.map(r => ({
           name: r.full_name,
           tc: r.tc_identity_number,
           bank: r.bank_name,
           accountName: r.full_name_bank,
           iban: r.iban,
           amount: data.reward_amount
-        })));
+        })) : []);
       }
     } catch (err) {
       alert('Ödeme tablosu çekilemedi.');
@@ -2369,29 +2383,29 @@ export default function AdminDashboard() {
                       <div className="flex flex-wrap gap-2">
                         {[
                           { label: 'Cinsiyet', val: selectedSurvey.target_gender },
-                          { label: 'Yaş', val: selectedSurvey.target_age },
+                          { label: 'Yaş', val: selectedSurvey.target_age_group },
                           { label: 'Şehir', val: selectedSurvey.target_city },
-                          { label: 'Eğitim', val: selectedSurvey.target_education_level },
+                          { label: 'Eğitim', val: selectedSurvey.target_education },
                           { label: 'Meslek', val: selectedSurvey.target_occupation },
-                          { label: 'Çalışma', val: selectedSurvey.target_work_status },
+                          { label: 'Çalışma', val: selectedSurvey.target_employment_status },
                           { label: 'Sektör', val: selectedSurvey.target_sector },
                           { label: 'Pozisyon', val: selectedSurvey.target_position },
-                          { label: 'Gelir', val: selectedSurvey.target_household_income },
+                          { label: 'Gelir', val: selectedSurvey.target_income },
                           { label: 'Medeni', val: selectedSurvey.target_marital_status },
-                          { label: 'Çocuk', val: selectedSurvey.target_children_count }
-                        ].map(item => item.val && item.val.length > 0 && !item.val.every(v => v.toLowerCase() === 'hepsi') && (
+                          { label: 'Çocuk', val: selectedSurvey.target_child_count }
+                        ].map(item => Array.isArray(item.val) && item.val.length > 0 && !item.val.every(v => v && String(v).toLowerCase() === 'hepsi') && (
                           <span key={item.label} className="px-3 py-1.5 bg-[#1A233A] border border-[#2A3441] rounded-lg text-[11px] font-bold text-slate-300">
                             <span className="text-slate-500 mr-1 uppercase tracking-wider text-[9px]">{item.label}:</span>
                             <span className="text-orange-400">{item.val.join(', ')}</span>
                           </span>
                         ))}
                         {/* Eğer her şey Hepsi ise tek bir etiket göster */}
-                        {![
-                          selectedSurvey.target_gender, selectedSurvey.target_age, selectedSurvey.target_city,
-                          selectedSurvey.target_education_level, selectedSurvey.target_occupation, selectedSurvey.target_work_status,
-                          selectedSurvey.target_sector, selectedSurvey.target_position, selectedSurvey.target_household_income,
-                          selectedSurvey.target_marital_status, selectedSurvey.target_children_count
-                        ].some(val => val && val.length > 0 && !val.every(v => v.toLowerCase() === 'hepsi')) && (
+                        {!([
+                          selectedSurvey.target_gender, selectedSurvey.target_age_group, selectedSurvey.target_city,
+                          selectedSurvey.target_education, selectedSurvey.target_occupation, selectedSurvey.target_employment_status,
+                          selectedSurvey.target_sector, selectedSurvey.target_position, selectedSurvey.target_income,
+                          selectedSurvey.target_marital_status, selectedSurvey.target_child_count
+                        ].some(val => Array.isArray(val) && val.length > 0 && !val.every(v => v && String(v).toLowerCase() === 'hepsi'))) && (
                             <span className="px-3 py-1.5 bg-orange-500/10 border border-orange-500/20 rounded-lg text-[11px] font-bold text-orange-400">
                               GENEL HEDEFLEME (HEPSİ)
                             </span>
@@ -2402,7 +2416,7 @@ export default function AdminDashboard() {
                     <div className="grid grid-cols-2 gap-6 mb-10">
                       <div className="bg-[#0B1121] border border-[#1A233A] rounded-[2rem] p-6 text-center shadow-inner">
                         <p className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Hedef Sayı</p>
-                        <p className="text-4xl font-black text-slate-300">{selectedSurvey.target_count || selectedSurvey.targetCount}</p>
+                        <p className="text-4xl font-black text-slate-300">{selectedSurvey.target_count || selectedSurvey.targetCount || selectedSurvey.target_audience || '—'}</p>
                       </div>
                       <div className="bg-[#0B1121] border border-orange-500/30 rounded-[2rem] p-6 text-center relative overflow-hidden shadow-[0_0_20px_rgba(249,115,22,0.1)]">
                         <div className="absolute inset-0 bg-orange-500/10"></div>
@@ -2874,7 +2888,7 @@ export default function AdminDashboard() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-[#1A233A]">
-                            {selectedSurvey.paymentTable.rows.map((row, idx) => (
+                            {(selectedSurvey.paymentTable?.rows || []).map((row, idx) => (
                               <tr key={idx} className="hover:bg-[#1A233A]/30 transition-colors group">
                                 <td className="px-6 py-6">
                                   <div className="flex items-center gap-2 mb-1">

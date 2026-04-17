@@ -474,10 +474,10 @@ model profiles {
   video_conference_optin Boolean?                @default(false)
   tc_identity_number     String?                 @db.VarChar(11)
   education_level        education_level_type?   @default(Lisans)
-  household_income       household_income_level?
+  household_income       Json?
   marital_status         marital_status_type?
   children_count         child_count_enum?
-  sector_type            sector_enum_type?
+  sector_type            Json?
   work_status            work_status_type?
   role                   user_role               @default(user)
   bank_name              bank_name_type?
@@ -517,7 +517,6 @@ model surveys {
   reward_amount            Decimal?                 @default(25.0) @db.Decimal
   estimated_time           Int?                     @default(5)
   total_cost               Decimal?                 @db.Decimal
-  target_count             Int?                     @default(0)
   status                   survey_status_enum?      @default(pending)
   target_education         education_level_enum[]
   target_occupation        occupation_enum[]        @default([])
@@ -528,7 +527,7 @@ model surveys {
   target_age_group         age_group_enum[]         @default([])
   target_employment_status employment_status_enum[] @default([])
   target_sector            sector_enum[]            @default([])
-  target_income            income_enum[]            @default([])
+  target_income            Json?
   target_gender            gender_type[]            @default([])
   target_city              turkey_city_enum[]       @default([])
   ai_messages              ai_messages[]
@@ -824,7 +823,7 @@ enum position_type {
 enum sector_enum {
   ozel_sektor
   kamu_sektoru
-  isletme_sahibi_esnaf_zanaatkarkendi_isi
+  isletme_sahibi_esnaf_zanaatkar_kendi_isi
 
   @@schema("public")
 }
