@@ -107,4 +107,100 @@ export class AdminService {
         const role = is_researcher ? 'researcher' : 'user';
         return this.assignRole(id, role);
     }
+
+    async getDashboardInit() {
+        // Multi-query optimization for dashboard speed
+        const [stats, pendingRes, recentSrv, allSurveys, usersRes, usersListRes] = await Promise.all([
+            // Stats
+            this.prisma.$queryRawUnsafe<any[]>(`
+                SELECT status::text as status, count(*)::int as count 
+                FROM public.surveys GROUP BY status
+            `),
+            // Pending Surveys for Approval
+            this.prisma.$queryRawUnsafe<any[]>(`
+                SELECT s.id, s.title, s.created_at, u.email as creator_email, p.full_name as creator_name
+                FROM public.surveys s
+                JOIN auth.users u ON s.creator_id = u.id
+                JOIN public.profiles p ON s.creator_id = p.id
+                WHERE s.status = 'pending'
+                ORDER BY s.created_at DESC LIMIT 20
+            `),
+            // Recent Surveys for Activities
+            this.prisma.$queryRawUnsafe<any[]>(`
+                SELECT s.id, s.title, s.status::text as status, s.created_at, p.full_name as user_name
+                FROM public.surveys s
+                JOIN public.profiles p ON s.creator_id = p.id
+                ORDER BY s.created_at DESC LIMIT 10
+            `),
+            // All Surveys - explicit columns only (no s.* to avoid enum casting issues)
+            this.prisma.$queryRawUnsafe<any[]>(`
+                SELECT 
+                    s.id, s.title, s.description, s.survey_link, s.completion_code,
+                    s.platform::text as platform,
+                    s.reward_amount::text as reward_amount,
+                    s.estimated_time, s.total_cost::text as total_cost,
+                    s.status::text as status,
+                    s.created_at, s.creator_id,
+                    s.target_audience, s.target_gender::text as target_gender,
+                    s.target_age_group::text as target_age_group,
+                    s.target_city::text as target_city,
+                    s.target_occupation::text as target_occupation,
+                    p.full_name as creator_name,
+                    (SELECT count(*)::int FROM public.submissions sub WHERE sub.survey_id = s.id) as submission_count
+                FROM public.surveys s
+                JOIN public.profiles p ON s.creator_id = p.id
+                ORDER BY s.created_at DESC LIMIT 50
+            `),
+            // User counts
+            this.prisma.$queryRawUnsafe<any[]>(`
+                SELECT count(*)::int as count FROM public.profiles
+            `),
+            // User list summary (first page)
+            this.prisma.$queryRawUnsafe<any[]>(`
+                SELECT 
+                    p.id, p.full_name, p.phone, p.role::text as role,
+                    p.created_at, p.updated_at, p.balance::text as balance,
+                    p.iban, p.bank_name::text as bank_name,
+                    p.tc_identity_number, p.city::text as city,
+                    p.gender::text as gender, p.occupation::text as occupation,
+                    u.email
+                FROM public.profiles p
+                JOIN auth.users u ON p.id = u.id
+                ORDER BY p.created_at DESC LIMIT 20
+            `)
+        ]);
+
+        const formattedStats = {
+            total: stats.reduce((acc, curr) => acc + curr.count, 0),
+            pending: stats.find(s => s.status === 'pending')?.count || 0,
+            approved: stats.find(s => s.status === 'active')?.count || 0,
+            completed: stats.find(s => s.status === 'completed')?.count || 0,
+            rejected: stats.find(s => s.status === 'rejected')?.count || 0,
+            totalUsers: usersRes[0]?.count || 0
+        };
+
+        return {
+            stats: formattedStats,
+            pending: pendingRes.map(p => ({ 
+                ...p, 
+                users: { email: p.creator_email, profiles: { full_name: p.creator_name } } 
+            })),
+            surveys: allSurveys.map(s => ({
+                ...s,
+                users: { profiles: { full_name: s.creator_name } },
+                _count: { submissions: s.submission_count }
+            })),
+            users: {
+                items: usersListRes.map(u => ({ ...u, users: { email: u.email } })),
+                total: usersRes[0]?.count || 0
+            },
+            activities: recentSrv.map(s => ({
+                id: s.id,
+                type: s.status === 'active' ? 'approve' : (s.status === 'completed' ? 'payout' : 'new_request'),
+                user: s.user_name || 'Sistem',
+                target: s.title,
+                time: s.created_at
+            }))
+        };
+    }
 }

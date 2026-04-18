@@ -520,6 +520,7 @@ export class SurveysService {
         const subs = await this.prisma.$queryRawUnsafe<any[]>(`
             SELECT 
                 sub.*, sub.status::text as status,
+                sub.payement_status::text as "paymentStatus",
                 u.email,
                 p.full_name, p.tc_identity_number, p.bank_name::text as bank_name, p.iban, p.full_name_bank, p.role::text as role
             FROM public.submissions sub

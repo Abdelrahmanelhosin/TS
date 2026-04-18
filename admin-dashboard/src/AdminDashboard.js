@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import {
   LayoutDashboard,
   Users,
@@ -442,7 +443,8 @@ const RECENT_ACTIVITIES = [
 
 export default function AdminDashboard() {
   const [token, setToken] = useState(localStorage.getItem('token'));
-  const [activeView, setActiveView] = useState('users');
+  const [activeView, setActiveView] = useState('overview');
+  const [surveyFilter, setSurveyFilter] = useState('all'); // all, pending, active, completed, rejected
   const [validationRules, setValidationRules] = useState([]);
   const [isAddingRule, setIsAddingRule] = useState(false);
 
@@ -528,39 +530,30 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const headers = { 'Authorization': `Bearer ${token}` };
-      const [uRes, rRes, sRes, statRes, allSrvRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/admin/users`, { headers }),
-        fetch(`${API_BASE_URL}/admin/surveys/pending`, { headers }),
-        fetch(`${API_BASE_URL}/admin/surveys/all`, { headers }),
-        fetch(`${API_BASE_URL}/admin/surveys/stats`, { headers }),
-        fetch(`${API_BASE_URL}/admin/surveys/all`, { headers }) // Re-using to derive activity
-      ]);
+      const initRes = await fetch(`${API_BASE_URL}/admin/init`, { headers });
+      const initData = await initRes.json();
 
-      const [uData, rData, sData, statData, allSrvData] = await Promise.all([
-        uRes.json(), rRes.json(), sRes.json(), statRes.json(), allSrvRes.json()
-      ]);
-
-      if (!uRes.ok || !rRes.ok || !sRes.ok || !statRes.ok) {
+      if (!initRes.ok) {
         let msg = 'API Error';
-        if (statRes.status === 401) msg = 'Oturum geçersiz veya yetkiniz yok (401)';
-        else if (!statRes.ok) msg = `Stats Error (${statRes.status})`;
+        if (initRes.status === 401) msg = 'Oturum geçersiz veya yetkiniz yok (401)';
+        else msg = initData.message || `Error (${initRes.status})`;
 
         setError(`Veri alınamadı: ${msg}. Lütfen ADMİN yetkiniz olduğundan emin olun.`);
         setLoading(false);
         return;
       }
 
-      const formattedUsers = uData.items.map(u => ({
+      const formattedUsers = initData.users.items.map(u => ({
         id: u.id,
         name: u.full_name || u.full_name_bank || u.users?.email || 'İsimsiz',
         email: u.users?.email || '—',
-        role: u.role === 'admin' ? 'Admin' : (u.role === 'researcher' ? 'Araştırmacı' : 'Kullanıcı'),
+        role: u.role === 'admin' ? 'Admin' : (u.role === 'researcher' ? 'Araştرمacı' : 'Kullanıcı'),
         registeredAt: u.created_at,
         profile: u || {}
       }));
       setUsers(formattedUsers);
 
-      setRequests(rData.map(r => ({
+      setRequests(initData.pending.map(r => ({
         ...r,
         creatorName: r.users?.profiles?.full_name || 'Bilinmiyor',
         targetAudience: r.target_audience || {},
@@ -568,7 +561,7 @@ export default function AdminDashboard() {
         completionCode: r.completion_code
       })));
 
-      setSurveys(sData.map(s => ({
+      setSurveys(initData.surveys.map(s => ({
         ...s,
         creatorName: s.users?.profiles?.full_name || 'Bilinmiyor',
         targetAudience: {
@@ -584,19 +577,8 @@ export default function AdminDashboard() {
         participants: []
       })));
 
-      setStats(statData);
-
-      if (allSrvData) {
-        const derived = allSrvData.slice(0, 5).map(s => ({
-          id: s.id,
-          type: s.status === 'active' ? 'approve' : (s.status === 'completed' ? 'payout' : 'new_user'),
-          user: s.users?.profiles?.full_name || 'Sistem',
-          target: `${s.title} (${s.status})`,
-          time: new Date(s.updated_at).toLocaleDateString('tr-TR')
-        }));
-        setActivities(derived);
-      }
-
+      setStats(initData.stats);
+      setActivities(initData.activities);
       setError('');
     } catch (err) {
       console.error('FetchData Error:', err);
@@ -605,6 +587,39 @@ export default function AdminDashboard() {
       setLoading(false);
     }
   }, [token]);
+
+  const parseFileToJson = async (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+          
+          const normalized = json.map(row => {
+            const newRow = { ...row };
+            const codeKey = Object.keys(row).find(k => 
+              k.toLowerCase().includes('katılımcı') || 
+              k.toLowerCase().includes('kod') || 
+              k.toLowerCase() === 'id' || 
+              k.toLowerCase() === 'unique_id' ||
+              k.toLowerCase().includes('participant')
+            );
+            if (codeKey) newRow['unique_id'] = String(row[codeKey]).trim();
+            return newRow;
+          });
+          resolve(normalized);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  };
 
   const fetchSurveyDetails = async (surveyId, forceUpdateSelected = false) => {
     try {
@@ -1450,8 +1465,7 @@ export default function AdminDashboard() {
 
           <div className="mt-10 mb-4 px-2 text-[11px] font-black text-slate-500 uppercase tracking-[0.2em]">Yönetim Paneli</div>
           <SidebarItem icon={Users} label="Kullanıcılarımız" viewId="users" />
-          <SidebarItem icon={FileText} label="Anket İstekleri" viewId="requests" />
-          <SidebarItem icon={ListTodo} label="Aktif/Tamamlanan" viewId="surveys" />
+          <SidebarItem icon={ListTodo} label="Anket Yönetimi" viewId="surveys" />
           <SidebarItem icon={WalletCards} label="Ödeme Talimatları" viewId="payments" />
         </div>
       </aside>
@@ -1467,8 +1481,7 @@ export default function AdminDashboard() {
               {activeView === 'overview' && 'Sistem Analitiği ve Özeti'}
               {/* {activeView === 'ai-analytics' && 'Yapay Zeka Platform Analizi'} */}
               {activeView === 'users' && 'Kullanıcı Yönetimi'}
-              {activeView === 'requests' && 'Anket Oluşturma İstekleri'}
-              {activeView === 'surveys' && 'Yayımladığımız Anketler'}
+              {activeView === 'surveys' && 'Anket Yönetimi'}
               {activeView === 'payments' && 'Ödeme Talimatı Tablosu'}
             </h1>
             <p className="text-xs text-slate-400 mt-1 font-medium tracking-wide">PolTem Akademi Yönetim Paneli</p>
@@ -1696,119 +1709,91 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* SAYFA 2: ANKET İSTEKLERİ (DRAFTS) */}
-            {activeView === 'requests' && (
-              <div className="bg-[#131B2F] border border-[#1A233A] rounded-[2.5rem] overflow-hidden animate-in fade-in shadow-2xl">
-                <div className="p-8 border-b border-[#1A233A] bg-[#131B2F]/50">
-                  <h2 className="text-xl font-black text-white flex items-center gap-3">
-                    <FileText className="w-6 h-6 text-orange-500" />
-                    Anket İstekleri <span className="text-sm font-bold text-slate-500 ml-2 tracking-wide uppercase">(Status: Draft)</span>
-                  </h2>
-                </div>
-                <div className="overflow-x-auto p-4">
-                  <table className="w-full text-left">
-                    <thead className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] bg-[#1A233A] rounded-2xl">
-                      <tr>
-                        <th className="px-8 py-5 first:rounded-l-2xl">ID</th>
-                        <th className="px-8 py-5">Başlık & Detay</th>
-                        <th className="px-8 py-5">Hedef Kitle</th>
-                        <th className="px-8 py-5">Durum</th>
-                        <th className="px-8 py-5 text-right last:rounded-r-2xl">İncele</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#1A233A]">
-                      {requests.map(r => (
-                        <tr key={r.id} className="hover:bg-[#1A233A]/50 transition-colors cursor-pointer group" onClick={() => setSelectedRequest(r)}>
-                          <td className="px-8 py-6 font-mono text-slate-400 text-sm">{r.creatorId}</td>
-                          <td className="px-8 py-6">
-                            <div className="font-bold text-white group-hover:text-orange-400 transition-colors text-lg">{r.title}</div>
-                            <div className="text-sm text-slate-400 mt-1 truncate max-w-xs">{r.description}</div>
-                          </td>
-                          <td className="px-8 py-6 text-slate-300 text-sm">
-                            <div className="truncate max-w-[200px] font-medium">
-                              {Object.values(r.targetAudience).slice(0, 2).join(', ')}...
-                            </div>
-                          </td>
-                          <td className="px-8 py-6">
-                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${(STATUS_MAP[r.status] || STATUS_MAP['pending']).color}`}>
-                              {(STATUS_MAP[r.status] || STATUS_MAP['pending']).label}
-                            </span>
-                          </td>
-                          <td className="px-8 py-6 text-right">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setSelectedRequest(r); }}
-                              className="p-3 bg-[#1A233A] border border-[#2A3441] rounded-xl group-hover:border-orange-500/50 group-hover:bg-orange-500/10 transition-colors"
-                            >
-                              <ArrowRight className="w-5 h-5 text-slate-400 group-hover:text-orange-500" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* SAYFA 4: YAYIMLANMIŞ ANKETLER (ACTIVE/COMPLETED) */}
+            {/* SAYFA: UNIFIED ANKET YÖNETİMİ */}
             {activeView === 'surveys' && (
               <div className="bg-[#131B2F] border border-[#1A233A] rounded-[2.5rem] overflow-hidden animate-in fade-in shadow-2xl">
                 <div className="p-8 border-b border-[#1A233A] bg-[#131B2F]/50">
-                  <h2 className="text-xl font-black text-white flex items-center gap-3">
-                    <ListTodo className="w-6 h-6 text-orange-500" />
-                    Anketler <span className="text-sm font-bold text-slate-500 ml-2 tracking-wide uppercase">(Status: Active, Completed)</span>
-                  </h2>
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-black text-white flex items-center gap-3">
+                      <ListTodo className="w-6 h-6 text-orange-500" />
+                      Anket Yönetimi
+                    </h2>
+                    <div className="flex bg-[#0B1121] p-1 rounded-xl border border-[#1A233A]">
+                      {[
+                        { id: 'all', label: 'Tümü' },
+                        { id: 'pending', label: 'Beklemede' },
+                        { id: 'active', label: 'Yayında' },
+                        { id: 'completed', label: 'Bitti' },
+                        { id: 'rejected', label: 'İptal' }
+                      ].map(tab => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setSurveyFilter(tab.id)}
+                          className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${surveyFilter === tab.id ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
+
                 <div className="overflow-x-auto p-4">
                   <table className="w-full text-left">
                     <thead className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] bg-[#1A233A] rounded-2xl">
                       <tr>
                         <th className="px-8 py-5 first:rounded-l-2xl">Oluşturan</th>
-                        <th className="px-8 py-5">Anket Adı & Paket</th>
+                        <th className="px-8 py-5">Anket Detayı</th>
                         <th className="px-8 py-5">Hedef / Ulaşılan</th>
                         <th className="px-8 py-5">Durum</th>
-                        <th className="px-8 py-5 text-right last:rounded-r-2xl">Detay</th>
+                        <th className="px-8 py-5 text-right last:rounded-r-2xl">İşlem</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#1A233A]">
-                      {surveys.map(s => (
-                        <tr key={s.id} className="hover:bg-[#1A233A]/50 transition-colors cursor-pointer group" onClick={() => { setSelectedSurvey(s); fetchSurveyDetails(s.id, true); }}>
-                          <td className="px-8 py-6">
-                            <div className="font-mono text-slate-400 text-xs mb-1">{s.creatorId}</div>
-                            <div className="font-bold text-slate-200">{s.creatorName}</div>
-                          </td>
-                          <td className="px-8 py-6">
-                            <div className="font-bold text-white group-hover:text-orange-400 transition-colors text-lg">{s.title}</div>
-                            <div className="text-sm text-slate-400 mt-1 font-medium">{s.package}</div>
-                          </td>
-                          <td className="px-8 py-6 font-mono text-lg">
-                            <span className="font-black text-orange-400">{s.reachedCount}</span> <span className="text-slate-500 text-sm">/ {s.targetCount}</span>
-                          </td>
-                          <td className="px-8 py-6">
-                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${(STATUS_MAP[s.status] || STATUS_MAP['active']).color}`}>
-                              {(STATUS_MAP[s.status] || STATUS_MAP['active']).label}
-                            </span>
-                          </td>
-                          <td className="px-8 py-6 text-right flex justify-end gap-2">
-                            {/* <button 
-                              onClick={(e) => { 
-                                e.stopPropagation(); 
-                                fetchSurveyDetails(s.id); 
-                                setActiveView('survey-audit'); 
-                              }}
-                              className="p-3 bg-orange-500/10 border border-orange-500/20 rounded-xl hover:bg-orange-500/20 transition-all text-orange-500 font-bold text-[10px] flex items-center gap-2"
-                            >
-                              <Brain className="w-4 h-4" /> DENETLE
-                            </button> */}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setSelectedSurvey(s); fetchSurveyDetails(s.id, true); }}
-                              className="p-3 bg-[#1A233A] border border-[#2A3441] rounded-xl group-hover:border-orange-500/50 group-hover:bg-orange-500/10 transition-colors"
-                            >
-                              <ArrowRight className="w-5 h-5 text-slate-400 group-hover:text-orange-500" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {[...surveys, ...requests]
+                        .filter(s => surveyFilter === 'all' || s.status === surveyFilter)
+                        .map(s => (
+                          <tr key={s.id} className="hover:bg-[#1A233A]/50 transition-colors cursor-pointer group" onClick={() => {
+                            if (s.status === 'pending') {
+                              setSelectedRequest(s);
+                            } else {
+                              setSelectedSurvey(s);
+                              fetchSurveyDetails(s.id, true);
+                            }
+                          }}>
+                            <td className="px-8 py-6">
+                              <div className="font-bold text-slate-200">{s.creatorName}</div>
+                              <div className="text-[10px] text-slate-500 font-bold uppercase mt-1 tracking-wider">
+                                {new Date(s.created_at).toLocaleDateString('tr-TR')}
+                              </div>
+                            </td>
+                            <td className="px-8 py-6">
+                              <div className="font-bold text-white group-hover:text-orange-400 transition-colors text-lg">{s.title}</div>
+                              <div className="text-sm text-slate-400 mt-1 font-medium truncate max-w-xs">{s.description}</div>
+                            </td>
+                            <td className="px-8 py-6 font-mono">
+                              {s.status === 'pending' ? (
+                                <span className="text-slate-500 italic">Onay Bekliyor</span>
+                              ) : (
+                                <>
+                                  <span className="font-black text-orange-400">{s.reachedCount || 0}</span> <span className="text-slate-500 text-sm">/ {s.targetCount || s.target_audience}</span>
+                                </>
+                              )}
+                            </td>
+                            <td className="px-8 py-6">
+                              <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${(STATUS_MAP[s.status] || STATUS_MAP['active']).color}`}>
+                                {(STATUS_MAP[s.status] || STATUS_MAP['active']).label}
+                              </span>
+                            </td>
+                            <td className="px-8 py-6 text-right">
+                              <button
+                                className="p-3 bg-[#1A233A] border border-[#2A3441] rounded-xl group-hover:border-orange-500/50 group-hover:bg-orange-500/10 transition-colors"
+                              >
+                                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-orange-500" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                 </div>
@@ -2475,20 +2460,6 @@ export default function AdminDashboard() {
                 </button> */}
               </div>
 
-              {/* {surveyAnalysis[selectedSurvey.id] && (
-                <div className="mb-10 animate-in fade-in-slide-in-from-top-2 duration-500">
-                  <div className="bg-orange-500/5 border border-orange-500/20 rounded-[2rem] p-8 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 blur-[50px]"></div>
-                    <h4 className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                      <Brain className="w-4 h-4" /> YAPAY ZEKA KAMPANYA ANALİZİ
-                    </h4>
-                    <div className="prose prose-sm prose-invert max-w-none text-slate-300 font-medium leading-relaxed whitespace-pre-wrap">
-                      {surveyAnalysis[selectedSurvey.id]}
-                    </div>
-                  </div>
-                </div>
-              )} */}
-
               {detailTab === 'analysis' && (
                 <div className="bg-[#131B2F] border border-[#1A233A] rounded-[2.5rem] overflow-hidden animate-in fade-in-50 slide-in-from-bottom-2 duration-500 shadow-2xl mb-10">
                   <div className="p-8 border-b border-[#1A233A] bg-[#131B2F]/50 flex justify-between items-center">
@@ -2501,51 +2472,26 @@ export default function AdminDashboard() {
                         type="file"
                         id="csvMatchUpload"
                         className="hidden"
-                        accept=".csv"
-                        onChange={(e) => {
+                        accept=".csv,.xlsx,.xls"
+                        onChange={async (e) => {
                           const file = e.target.files[0];
                           if (!file) return;
+                          try {
+                            const dataRows = await parseFileToJson(file);
+                            const res = await fetch(`${API_BASE_URL}/admin/surveys/${selectedSurvey.id}/match-csv`, {
+                              method: 'POST',
+                              headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ rows: dataRows })
+                            });
 
-                          const reader = new FileReader();
-                          reader.onload = async (ev) => {
-                            const text = ev.target.result;
-                            const lines = text.split(/\r?\n/);
-                            if (lines.length < 2) return;
-
-                            const splitCSV = (line) => {
-                              // Identify separator (comma or tab)
-                              const sep = line.includes('\t') ? '\t' : ',';
-                              if (sep === '\t') return line.split('\t').map(s => s.trim().replace(/^"|"$/g, ''));
-
-                              const matches = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g);
-                              return matches ? matches.map(m => m.replace(/^"|"$/g, '').trim()) : [];
-                            };
-
-                            const headers = splitCSV(lines[0]);
-                            const dataRows = lines.slice(1).map(line => {
-                              const values = splitCSV(line);
-                              const obj = {};
-                              headers.forEach((h, idx) => {
-                                if (h.includes('katılımcı kodunu yapıştırınız')) obj['unique_id'] = values[idx];
-                                obj[h] = values[idx];
-                              });
-                              return obj;
-                            }).filter(r => Object.keys(r).length > 0);
-
-                            try {
-                              const res = await fetch(`${API_BASE_URL}/admin/surveys/${selectedSurvey.id}/match-csv`, {
-                                method: 'POST',
-                                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ rows: dataRows })
-                              });
-                              if (res.ok) {
-                                const results = await res.json();
-                                alert(`Eşleşti: ${results.matched} onaylandı, ${results.unmatched} eşleşmedi.`);
-                                fetchSurveyDetails(selectedSurvey.id);
-                              }
-                            } catch (err) { alert('Hata oluştu.'); }
-                          };
-                          reader.readAsText(file);
+                            if (res.ok) {
+                              const results = await res.json();
+                              alert(`Eşleşti: ${results.matched?.length || 0} onaylandı, ${results.unmatchedCsv?.length || 0} eşleşmedi (CSV'de bulunup sistemde olmayan).`);
+                              fetchSurveyDetails(selectedSurvey.id);
+                            }
+                          } catch (err) { 
+                            alert('Dosya okuma veya eşleştirme hatası.'); 
+                          }
                           e.target.value = '';
                         }}
                       />
@@ -2553,46 +2499,31 @@ export default function AdminDashboard() {
                         type="file"
                         id="smartMatchUpload"
                         className="hidden"
-                        accept=".csv"
-                        onChange={(e) => {
+                        accept=".csv,.xlsx,.xls"
+                        onChange={async (e) => {
                           const file = e.target.files[0];
                           if (!file) return;
 
                           const colId = prompt('Benzersiz ID sütun adı (örn: Unique ID):', 'Unique ID');
-                          const colAns = prompt('Cevapların olduğu sütun adı (örn: Answer):', 'Answer');
-                          const correctVal = prompt('Doğru cevap değeri (örn: "Doğru"):', 'Doğru');
+                          const colAns = prompt('Cevapların olduğu sütun adı (örn: Question Header):', 'Answer');
+                          const correctVal = prompt('Doğru cevap değeri (örn: 4):', '4');
 
                           if (colId && colAns && correctVal) {
-                            const reader = new FileReader();
-                            reader.onload = async (ev) => {
-                              const text = ev.target.result;
-                              const lines = text.split(/\r?\n/);
-                              const splitCSV = (line) => {
-                                const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-                                return matches ? matches.map(m => m.replace(/^"|"$/g, '').trim()) : [];
-                              };
-                              const headers = splitCSV(lines[0]);
-                              const dataRows = lines.slice(1).map(line => {
-                                const values = splitCSV(line);
-                                const obj = {};
-                                headers.forEach((h, idx) => obj[h] = values[idx]);
-                                return obj;
-                              }).filter(r => Object.keys(r).length > 0);
-
-                              try {
-                                const res = await fetch(`${API_BASE_URL}/admin/surveys/${selectedSurvey.id}/validate-csv`, {
-                                  method: 'POST',
-                                  headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ rows: dataRows, idCol: colId, ansCol: colAns, correctVal })
-                                });
-                                if (res.ok) {
-                                  const results = await res.json();
-                                  alert(`Eşleşti: ${results.approved} onaylandı, ${results.rejected} reddedildi.`);
-                                  fetchSurveyDetails(selectedSurvey.id);
-                                }
-                              } catch (err) { alert('Hata oluştu.'); }
-                            };
-                            reader.readAsText(file);
+                            try {
+                              const dataRows = await parseFileToJson(file);
+                              const res = await fetch(`${API_BASE_URL}/admin/surveys/${selectedSurvey.id}/validate-csv`, {
+                                method: 'POST',
+                                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ rows: dataRows, idCol: colId, ansCol: colAns, correctVal })
+                              });
+                              if (res.ok) {
+                                const results = await res.json();
+                                alert(`Akıllı Doğrulama: ${results.approved} onaylandı, ${results.rejected} reddedildi.`);
+                                fetchSurveyDetails(selectedSurvey.id);
+                              }
+                            } catch (err) { 
+                              alert('Doğrulama hatası أو ملف غير صالح.'); 
+                            }
                           }
                           e.target.value = '';
                         }}
@@ -2646,61 +2577,26 @@ export default function AdminDashboard() {
                         type="file"
                         id="advancedMatchUpload"
                         className="hidden"
-                        accept=".csv"
-                        onChange={(e) => {
+                        accept=".csv,.xlsx,.xls"
+                        onChange={async (e) => {
                           const file = e.target.files[0];
                           if (!file) return;
 
-                          const reader = new FileReader();
-                          reader.onload = async (ev) => {
-                            const text = ev.target.result;
-                            const lines = text.split(/\r?\n/);
-                            const splitCSV = (line) => {
-                              const sep = line.includes('\t') ? '\t' : ',';
-                              if (sep === '\t') return line.split('\t').map(s => s.trim().replace(/^"|"$/g, ''));
-
-                              const result = [];
-                              let current = '';
-                              let inQuotes = false;
-                              for (let i = 0; i < line.length; i++) {
-                                const char = line[i];
-                                if (char === '"') inQuotes = !inQuotes;
-                                else if (char === ',' && !inQuotes) {
-                                  result.push(current.trim().replace(/^"|"$/g, ''));
-                                  current = '';
-                                } else {
-                                  current += char;
-                                }
-                              }
-                              result.push(current.trim().replace(/^"|"$/g, ''));
-                              return result;
-                            };
-                            const headers = splitCSV(lines[0]);
-                            const dataRows = lines.slice(1).map(line => {
-                              const values = splitCSV(line);
-                              const obj = {};
-                              headers.forEach((h, idx) => {
-                                if (h.includes('katılımcı kodunu yapıştırınız')) obj['unique_id'] = values[idx];
-                                obj[h] = values[idx];
-                              });
-                              return obj;
-                            }).filter(r => Object.keys(r).length > 0);
-                            console.log('Parsed Rows:', dataRows);
-                            try {
-                              console.log('Sending request to validate-advanced...');
-                              const res = await fetch(`${API_BASE_URL}/admin/surveys/${selectedSurvey.id}/validate-advanced`, {
-                                method: 'POST',
-                                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ rows: dataRows, rules: validationRules })
-                              });
-                              if (res.ok) {
-                                const results = await res.json();
-                                alert(`Analiz Tamamlandı:\n- Onaylanan: ${results.approved}\n- Reddedilen: ${results.rejected}\n- Yeni İçe Aktarılan: ${results.imported}\n- Atlanan: ${results.skipped}\n\nNot: ${results.rejected} kişi kural ihlali nedeniyle reddedildi.`);
-                                fetchSurveyDetails(selectedSurvey.id);
-                              }
-                            } catch (err) { alert('Doğrulama hatası.'); }
-                          };
-                          reader.readAsText(file);
+                          try {
+                            const dataRows = await parseFileToJson(file);
+                            const res = await fetch(`${API_BASE_URL}/admin/surveys/${selectedSurvey.id}/validate-advanced`, {
+                              method: 'POST',
+                              headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ rows: dataRows, rules: validationRules })
+                            });
+                            if (res.ok) {
+                              const results = await res.json();
+                              alert(`Analiz Tamamlandı:\n- Onaylanan: ${results.approved}\n- Reddedilen: ${results.rejected}\n- Yeni İçe Aktarılan: ${results.imported}\n- Atlanan: ${results.skipped}\n\nNot: ${results.rejected} kişi kural ihlali nedeniyle reddedildi.`);
+                              fetchSurveyDetails(selectedSurvey.id);
+                            }
+                          } catch (err) {
+                            alert('Doğrulama hatası.');
+                          }
                           e.target.value = '';
                         }}
                       />

@@ -14,6 +14,12 @@ import { Roles } from '../auth/roles.decorator';
 export class AdminController {
     constructor(private readonly adminService: AdminService) { }
 
+    @Get('init')
+    @ApiOperation({ summary: 'Get consolidated dashboard initialization data' })
+    getDashboardInit() {
+        return this.adminService.getDashboardInit();
+    }
+
     @Get('users')
     @ApiOperation({ summary: 'Get all users with filtering' })
     @ApiQuery({ name: 'skip', required: false, type: Number })
