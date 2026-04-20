@@ -555,15 +555,22 @@ export default function AdminDashboard() {
 
       setRequests(initData.pending.map(r => ({
         ...r,
-        creatorName: r.users?.profiles?.full_name || 'Bilinmiyor',
-        targetAudience: r.target_audience || {},
+        status: 'pending',
+        creatorName: r.creator_name || 'Bilinmiyor',
+        targetAudience: {
+          'Cinsiyet': r.target_gender,
+          'Dönem/Yaş': r.target_age_group,
+          'Şehir': r.target_city,
+          'Meslek': r.target_occupation
+        },
         formLink: r.survey_link || r.form_link,
-        completionCode: r.completion_code
+        completionCode: r.completion_code,
+        targetCount: r.target_audience || r.target_count || 0
       })));
 
       setSurveys(initData.surveys.map(s => ({
         ...s,
-        creatorName: s.users?.profiles?.full_name || 'Bilinmiyor',
+        creatorName: s.creator_name || 'Bilinmiyor',
         targetAudience: {
           'Cinsiyet': s.target_gender,
           'Dönem/Yaş': s.target_age_group,
@@ -573,7 +580,7 @@ export default function AdminDashboard() {
         formLink: s.survey_link,
         completionCode: s.completion_code,
         targetCount: s.target_audience || s.target_count,
-        reachedCount: s._count?.submissions || 0,
+        reachedCount: s.submission_count || 0,
         participants: []
       })));
 
@@ -1751,7 +1758,7 @@ export default function AdminDashboard() {
                     </thead>
                     <tbody className="divide-y divide-[#1A233A]">
                       {[...surveys, ...requests]
-                        .filter(s => surveyFilter === 'all' || s.status === surveyFilter)
+                        .filter(s => surveyFilter === 'all' || s.status === surveyFilter || (surveyFilter === 'rejected' && s.status === 'paused'))
                         .map(s => (
                           <tr key={s.id} className="hover:bg-[#1A233A]/50 transition-colors cursor-pointer group" onClick={() => {
                             if (s.status === 'pending') {

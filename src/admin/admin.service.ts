@@ -118,7 +118,18 @@ export class AdminService {
             `),
             // Pending Surveys for Approval
             this.prisma.$queryRawUnsafe<any[]>(`
-                SELECT s.id, s.title, s.created_at, u.email as creator_email, p.full_name as creator_name
+                SELECT 
+                    s.id, s.title, s.description, s.survey_link, s.completion_code,
+                    s.platform::text as platform, s.reward_amount::text as reward_amount,
+                    s.estimated_time, s.total_cost::text as total_cost, s.status::text as status,
+                    s.created_at, s.creator_id, s.target_audience,
+                    array_to_json(s.target_gender) as target_gender, array_to_json(s.target_age_group) as target_age_group,
+                    array_to_json(s.target_city) as target_city, array_to_json(s.target_occupation) as target_occupation,
+                    array_to_json(s.target_education) as target_education, array_to_json(s.target_employment_status) as target_employment_status,
+                    array_to_json(s.target_sector) as target_sector, array_to_json(s.target_position) as target_position,
+                    array_to_json(s.target_marital_status) as target_marital_status, array_to_json(s.target_child_count) as target_child_count,
+                    s.target_income, s.duration::text as duration, s.video_conference_optin,
+                    u.email as creator_email, p.full_name as creator_name
                 FROM public.surveys s
                 JOIN auth.users u ON s.creator_id = u.id
                 JOIN public.profiles p ON s.creator_id = p.id
@@ -136,15 +147,15 @@ export class AdminService {
             this.prisma.$queryRawUnsafe<any[]>(`
                 SELECT 
                     s.id, s.title, s.description, s.survey_link, s.completion_code,
-                    s.platform::text as platform,
-                    s.reward_amount::text as reward_amount,
-                    s.estimated_time, s.total_cost::text as total_cost,
-                    s.status::text as status,
-                    s.created_at, s.creator_id,
-                    s.target_audience, s.target_gender::text as target_gender,
-                    s.target_age_group::text as target_age_group,
-                    s.target_city::text as target_city,
-                    s.target_occupation::text as target_occupation,
+                    s.platform::text as platform, s.reward_amount::text as reward_amount,
+                    s.estimated_time, s.total_cost::text as total_cost, s.status::text as status,
+                    s.created_at, s.creator_id, s.target_audience,
+                    array_to_json(s.target_gender) as target_gender, array_to_json(s.target_age_group) as target_age_group,
+                    array_to_json(s.target_city) as target_city, array_to_json(s.target_occupation) as target_occupation,
+                    array_to_json(s.target_education) as target_education, array_to_json(s.target_employment_status) as target_employment_status,
+                    array_to_json(s.target_sector) as target_sector, array_to_json(s.target_position) as target_position,
+                    array_to_json(s.target_marital_status) as target_marital_status, array_to_json(s.target_child_count) as target_child_count,
+                    s.target_income, s.duration::text as duration, s.video_conference_optin,
                     p.full_name as creator_name,
                     (SELECT count(*)::int FROM public.submissions sub WHERE sub.survey_id = s.id) as submission_count
                 FROM public.surveys s
