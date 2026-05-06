@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class AdminService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private mailService: MailService,
+    ) { }
 
-    async getAllUsers(skip: number = 0, take: number = 10, search?: string, role?: string) {
+    async getAllUsers(skip: number = 0, take: number = 100, search?: string, role?: string) {
         let whereClause = '';
         const params: any[] = [];
 
@@ -177,7 +181,7 @@ export class AdminService {
                     u.email
                 FROM public.profiles p
                 JOIN auth.users u ON p.id = u.id
-                ORDER BY p.created_at DESC LIMIT 20
+                ORDER BY p.created_at DESC LIMIT 1000
             `)
         ]);
 
@@ -213,5 +217,39 @@ export class AdminService {
                 time: s.created_at
             }))
         };
+    }
+
+    async sendEmail(to: string, subject: string, content: string) {
+        return this.mailService.sendEmail(to, subject, content);
+    }
+
+    async easyCreateSurvey(creator_id: string, data: any) {
+        // Simple survey creation for professors
+        // Defaulting all filters to empty arrays (means "all") unless specified
+        return this.prisma.surveys.create({
+            data: {
+                title: data.title,
+                description: data.description || '',
+                survey_link: data.survey_link,
+                completion_code: `EASY-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+                platform: data.platform || 'Google Forms',
+                reward_amount: data.reward_amount || 25,
+                estimated_time: data.estimated_time || 5,
+                target_audience: data.target_audience || 100,
+                status: 'active',
+                creator_id: creator_id,
+                target_gender: data.target_gender || [],
+                target_age_group: data.target_age_group || [],
+                target_city: data.target_city || [],
+                target_education: data.target_education || [],
+                target_occupation: data.target_occupation || [],
+                target_sector: data.target_sector || [],
+                target_position: data.target_position || [],
+                target_income: data.target_income || [],
+                target_marital_status: data.target_marital_status || [],
+                target_child_count: data.target_child_count || [],
+                target_employment_status: data.target_employment_status || []
+            }
+        });
     }
 }

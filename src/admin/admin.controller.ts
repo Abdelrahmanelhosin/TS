@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, Body, Query, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Patch, Param, Body, Query, UseGuards, ParseUUIDPipe, Post, Request } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { AssignRoleDto, SetResearchPermissionDto } from './dto/admin.dto';
@@ -58,5 +58,17 @@ export class AdminController {
     @ApiOperation({ summary: 'Grant or revoke research creation permission' })
     setResearchPermission(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetResearchPermissionDto) {
         return this.adminService.setResearchPermission(id, dto.is_researcher);
+    }
+    
+    @Post('send-email')
+    @ApiOperation({ summary: 'Send an email via Resend' })
+    sendEmail(@Body() body: { to: string, subject: string, content: string }) {
+        return this.adminService.sendEmail(body.to, body.subject, body.content);
+    }
+
+    @Post('surveys/easy-create')
+    @ApiOperation({ summary: 'Simplified survey creation for professors' })
+    easyCreateSurvey(@Request() req: any, @Body() body: any) {
+        return this.adminService.easyCreateSurvey(req.user.id, body);
     }
 }

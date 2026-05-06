@@ -26,6 +26,14 @@ export class SurveysController {
     }
 
     @ApiBearerAuth()
+    @UseGuards(SupabaseAuthGuard)
+    @Get('submissions/me')
+    @ApiOperation({ summary: 'Get my submissions with status and rejection reasons (For Mobile App)' })
+    findMySubmissions(@Request() req: any) {
+        return this.surveysService.findSubmissionsByUser(req.user.userId);
+    }
+
+    @ApiBearerAuth()
     @UseGuards(SupabaseAuthGuard, RolesGuard)
     @Roles('researcher')
     @Post('surveys')
@@ -118,6 +126,15 @@ export class SurveysController {
     @ApiBearerAuth()
     @UseGuards(SupabaseAuthGuard, RolesGuard)
     @Roles('admin')
+    @Post('admin/surveys/:id/matching-users')
+    @ApiOperation({ summary: 'Get matching users for a survey with potential filter overrides (Admin only)' })
+    getMatchingUsers(@Param('id', ParseUUIDPipe) id: string, @Body() overrides?: any) {
+        return this.surveysService.getMatchingUsers(id, overrides);
+    }
+
+    @ApiBearerAuth()
+    @UseGuards(SupabaseAuthGuard, RolesGuard)
+    @Roles('admin')
     @Patch('admin/surveys/:id/approve')
     @ApiOperation({ summary: 'Approve survey (Admin only)' })
     approve(@Param('id', ParseUUIDPipe) id: string, @Body() updateData?: any) {
@@ -185,9 +202,9 @@ export class SurveysController {
     @ApiOperation({ summary: 'Update submission status (Admin only)' })
     updateSubmissionStatus(
         @Param('id', ParseUUIDPipe) id: string,
-        @Body('status') status: 'approved' | 'rejected'
+        @Body() body: { status: 'approved' | 'rejected', reject_reason?: string }
     ) {
-        return this.surveysService.updateSubmissionStatus(id, status);
+        return this.surveysService.updateSubmissionStatus(id, body.status, body.reject_reason);
     }
 
     @ApiBearerAuth()

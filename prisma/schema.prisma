@@ -580,6 +580,7 @@ model submissions {
   user_id         String                @db.Uuid
   survey_id       String                @db.Uuid
   status          submission_status?    @default(pending)
+  reject_reason   String?
   updated_at      DateTime?             @default(now()) @db.Timestamptz(6)
   metadata        Json?                 @default("{}")
   created_at      DateTime?             @db.Timestamptz(6)

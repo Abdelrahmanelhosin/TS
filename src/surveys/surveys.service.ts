@@ -1,10 +1,16 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSurveyDto, UpdateSurveyDto } from './dto/survey.dto';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class SurveysService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private mailService: MailService,
+        private configService: ConfigService
+    ) { }
 
     async create(createSurveyDto: CreateSurveyDto, creator_id: string) {
         return this.prisma.surveys.create({
@@ -344,7 +350,7 @@ export class SurveysService {
         `, id);
 
         if (!surveys || surveys.length === 0) throw new NotFoundException('Survey not found');
-        
+
         const survey = surveys[0];
 
         // Get submissions separately
@@ -433,25 +439,25 @@ export class SurveysService {
         // "hepsi" means "all" = no filter, so we store an empty array
         const toArray = (val: any) => {
             if (!val) return undefined;
-            
+
             const normalize = (v: any): string => {
                 if (typeof v !== 'string') return v;
                 const s = v.trim();
                 // Fix for Turkish 'İ' which becomes 'i\u0307' in standard toLowerCase()
                 let lower = s.replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase();
                 lower = lower.replace(/\u0307/g, ''); // strip out combining dots just in case
-                
+
                 // Gender
                 if (lower === 'erkek') return 'erkek';
                 if (lower === 'kadın' || lower === 'kadin') return 'kadin';
-                
+
                 // Age group
                 if (s === '18-24') return 'V18_24';
                 if (s === '25-34') return 'V25_34';
                 if (s === '35-44') return 'V35_44';
                 if (s === '45-54') return 'V45_54';
                 if (s === '55+') return 'ustu';
-                
+
                 // Education
                 if (s === 'İlkokul' || lower === 'ilkokul') return 'ilkokul';
                 if (s === 'Ortaokul' || lower === 'ortaokul') return 'ortaokul';
@@ -460,7 +466,7 @@ export class SurveysService {
                 if (s === 'Lisans' || lower === 'lisans') return 'lisans';
                 if (s === 'Yüksek Lisans' || lower === 'yüksek lisans' || lower === 'yuksek lisans') return 'yuksek_lisans';
                 if (s === 'Doktora' || lower === 'doktora') return 'doktora';
-                
+
                 // Marital Status
                 if (s === 'Evli' || lower === 'evli') return 'evli';
                 if (s === 'Bekar' || lower === 'bekar') return 'bekar';
@@ -533,7 +539,7 @@ export class SurveysService {
 
                 // Fallback for cities and others: normalize Turkish characters
                 let normalized = lower.replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c');
-                
+
                 // Strip any remaining spaces or non-word chars if it's supposed to be an enum (like cities)
                 // Actually, enum keys like 'kahramanmaras' don't have spaces.
                 return normalized;
@@ -574,10 +580,14 @@ export class SurveysService {
         const childCount = updateData?.target_child_count || updateData?.target_children;
         if (childCount) data.target_child_count = toArray(childCount);
 
-        return this.prisma.surveys.update({
+        const result = await this.prisma.surveys.update({
             where: { id },
             data,
         });
+
+        this.notifyMatchingUsers(id, updateData?.selectedUserIds).catch(err => console.error(err));
+
+        return result;
     }
 
     async reject(id: string) {
@@ -676,29 +686,67 @@ export class SurveysService {
         }));
     }
 
-    async updateSubmissionStatus(submissionId: string, status: 'approved' | 'rejected') {
+    async updateSubmissionStatus(submissionId: string, status: 'approved' | 'rejected', reject_reason?: string) {
         const submission = await this.prisma.submissions.findUnique({
-            where: { id: submissionId }
+            where: { id: submissionId },
+            include: { surveys: true }
         });
 
-        if (submission) {
-            const scoreChange = status === 'approved' ? 5 : -10;
-            await this.prisma.profiles.update({
-                where: { id: submission.user_id },
-                data: {}
-            });
-        }
+        if (!submission) throw new NotFoundException('Submission not found');
 
         const updated = await this.prisma.submissions.update({
             where: { id: submissionId },
-            data: { status }
+            data: { 
+                status,
+                reject_reason: status === 'rejected' ? (reject_reason || 'İptal nedeni belirtilmedi') : null
+            }
         });
 
-        if (status === 'approved' && submission) {
+        if (status === 'approved') {
             await this.checkSurveyCompletion(submission.survey_id);
         }
 
+        // Notify user of the decision
+        this.notifySubmissionDecision(submission.user_id, submission.survey_id, status, updated.reject_reason).catch(err => {
+            console.error('[SurveysService] Notification failed:', err.message);
+        });
+
         return updated;
+    }
+
+    private async notifySubmissionDecision(userId: string, surveyId: string, status: string, reason?: string | null) {
+        const [user, survey] = await Promise.all([
+            this.prisma.profiles.findUnique({ where: { id: userId }, include: { users: { select: { email: true } } } }),
+            this.prisma.surveys.findUnique({ where: { id: surveyId } })
+        ]);
+
+        if (!user || !survey) return;
+
+        const title = status === 'approved' ? 'تهانينا! تم قبول مشاركتك' : 'عذراً، تم رفض مشاركتك';
+        const body = status === 'approved' 
+            ? `تم قبول إجاباتك في استطلاع "${survey.title}". سيتم تحويل المكافأة قريباً.`
+            : `للأسف تم رفض مشاركتك في استطلاع "${survey.title}". السبب: ${reason || 'لم يتم تحديد سبب الرفض'}`;
+
+        console.log(`[Notification] To User ${userId}: ${title} - ${body}`);
+        
+        // Here we would call the FCM service once implemented
+    }
+
+    async findSubmissionsByUser(userId: string) {
+        return this.prisma.submissions.findMany({
+            where: { user_id: userId },
+            include: { 
+                surveys: {
+                    select: {
+                        id: true,
+                        title: true,
+                        reward_amount: true,
+                        platform: true
+                    }
+                }
+            },
+            orderBy: { updated_at: 'desc' }
+        });
     }
 
     async matchCSV(surveyId: string, csvRows: { unique_id?: string, email?: string }[]) {
@@ -752,7 +800,7 @@ export class SurveysService {
             SELECT id, title, reward_amount::text as reward_amount, total_cost::text as total_cost
             FROM public.surveys WHERE id = $1::uuid
         `, surveyId);
-        
+
         if (!surveys || surveys.length === 0) throw new NotFoundException('Survey not found');
         const survey = surveys[0];
 
@@ -882,16 +930,24 @@ export class SurveysService {
                 }
             }
 
+            const rejectReason = finalStatus === 'rejected' ? messages.join(', ') : null;
+
             await this.prisma.submissions.update({
                 where: { id: submission.id },
                 data: {
                     status: finalStatus as any,
+                    reject_reason: rejectReason,
                     metadata: {
                         ...(submission.metadata as any || {}),
                         unique_id: uniqueId,
                         validation_errors: messages
                     }
                 }
+            });
+
+            // Trigger notification
+            this.notifySubmissionDecision(submission.user_id, surveyId, finalStatus as any, rejectReason || undefined).catch(err => {
+                console.error(`Failed to notify user ${submission.user_id} during CSV validation:`, err.message);
             });
 
             if (finalStatus === 'approved') results.approved++;
@@ -912,38 +968,68 @@ export class SurveysService {
         const submissions = await this.getSubmissions(surveyId);
         const results = { approved: 0, rejected: 0, skipped: 0 };
 
-        for (const row of rows) {
-            const uniqueId = row[idCol];
-            const userAnswer = row[ansCol];
-
-            if (!uniqueId) continue;
-
-            const submission = (submissions as any[]).find(s => s.unique_id === uniqueId);
-            if (!submission) {
+        for (const submission of submissions) {
+            // The user pastes their user_id (UUID) into Google Forms
+            // So we need to match CSV values against user_id AND email
+            const userId = String(submission.user_id || '').trim().toLowerCase();
+            const userEmail = String(submission.users?.email || '').trim().toLowerCase();
+            
+            if (!userId && !userEmail) {
+                console.log(`[Validation] Skipping submission ${submission.id}: No user_id or Email.`);
                 results.skipped++;
                 continue;
             }
 
-            const status = String(userAnswer).trim().toLowerCase() === String(correctVal).trim().toLowerCase()
-                ? 'approved'
-                : 'rejected';
+            // Helper to clean strings (remove dashes, spaces, etc)
+            const clean = (s: string) => s.replace(/[^a-z0-9@.]/g, '');
 
-            await this.prisma.submissions.update({
-                where: { id: submission.id },
-                data: { status }
+            const csvRow = rows.find(r => {
+                // Search ALL columns in this row for a match
+                return Object.values(r).some(val => {
+                    const cellValue = String(val || '').trim().toLowerCase();
+                    const cleanCell = clean(cellValue);
+                    const cleanUserId = clean(userId);
+                    const cleanEmail = clean(userEmail);
+                    
+                    return (cleanUserId && (cleanCell === cleanUserId || cellValue === userId)) || 
+                           (cleanEmail && (cleanCell === cleanEmail || cellValue === userEmail));
+                });
             });
 
-            await this.prisma.profiles.update({
-                where: { id: submission.user_id },
-                data: {}
-            });
+            if (!csvRow) {
+                console.log(`[Validation] Match NOT found for userId: "${userId}", Email: "${userEmail}"`);
+                // Not found in CSV: User likely entered a wrong code in the survey tool
+                await this.updateSubmissionStatus(submission.id, 'rejected', "Kullanıcı id'yi yanlış girdiğiniz tespit edilmiştir.");
+                results.rejected++;
+            } else {
+                console.log(`[Validation] Match FOUND for userId: "${userId}"`);
+                // Found in CSV: Now check if they answered the trap question correctly
+                // Find the answer column (case-insensitive)
+                const ansKey = Object.keys(csvRow).find(k => k.trim().toLowerCase() === ansCol.trim().toLowerCase());
+                
+                if (!ansKey) {
+                    console.log(`[Validation] ERROR: Answer column "${ansCol}" NOT found in CSV row for userId "${userId}"`);
+                    await this.updateSubmissionStatus(submission.id, 'rejected', "Veri hatası: Cevap sütunu bulunamadı.");
+                    results.rejected++;
+                    continue;
+                }
 
-            if (status === 'approved') results.approved++;
-            else results.rejected++;
-        }
+                const userAnswer = String(csvRow[ansKey] || '').trim().toLowerCase();
+                const expected = String(correctVal).trim().toLowerCase();
 
-        if (results.approved > 0) {
-            await this.checkSurveyCompletion(surveyId);
+                console.log(`[Validation] Comparing for userId "${userId}": UserAnswer="${userAnswer}", Expected="${expected}"`);
+
+                if (userAnswer !== "" && userAnswer === expected) {
+                    console.log(`[Validation] SUCCESS: Approved userId "${userId}"`);
+                    await this.updateSubmissionStatus(submission.id, 'approved');
+                    results.approved++;
+                } else {
+                    console.log(`[Validation] REJECT: Trap Failed for userId "${userId}". Got "${userAnswer}", Expected "${expected}"`);
+                    // Answered incorrectly: Trap question failure
+                    await this.updateSubmissionStatus(submission.id, 'rejected', "Tuzak soruya yanlış cevap verildiği tespit edilmiştir.");
+                    results.rejected++;
+                }
+            }
         }
 
         return results;
@@ -965,6 +1051,149 @@ export class SurveysService {
                 where: { id: surveyId },
                 data: { status: 'completed' }
             });
+        }
+    }
+
+    async getMatchingUsers(surveyId: string, overrides?: any) {
+        let survey = await this.findOne(surveyId);
+        if (!survey) return [];
+
+        // Apply overrides if provided (for live preview in admin dashboard)
+        if (overrides) {
+            survey = { ...survey, ...overrides };
+        }
+
+        const profiles = await this.prisma.profiles.findMany({
+            include: { users: { select: { email: true } } }
+        });
+
+        const matches: any[] = [];
+        const incomplete: any[] = [];
+
+        for (const p of profiles) {
+            let isMatch = true;
+            let isMissingData = false;
+
+            // Helper to check filter (Allow null values)
+            const checkFilter = (userVal: any, filterArr: any[]) => {
+                if (!filterArr || filterArr.length === 0 || filterArr.includes('hepsi')) return 'match';
+                if (!userVal) return 'missing';
+                return filterArr.includes(userVal.toLowerCase()) ? 'match' : 'no_match';
+            };
+
+            const checks = [
+                checkFilter(p.gender, survey.target_gender as any[]),
+                checkFilter(p.city, survey.target_city as any[]),
+                checkFilter(p.education_level, survey.target_education as any[]),
+                checkFilter(p.occupation, survey.target_occupation as any[]),
+                checkFilter(p.marital_status, survey.target_marital_status as any[]),
+                checkFilter(p.children_count, survey.target_child_count as any[]),
+                checkFilter(p.work_status, survey.target_employment_status as any[]),
+                checkFilter(p.household_income, survey.target_income as any[]),
+                checkFilter(p.sector_type, survey.target_sector as any[]),
+                checkFilter(p.position, survey.target_position as any[]),
+            ];
+
+            // Special check for Age
+            if (survey.target_age_group?.length > 0 && !survey.target_age_group.includes('hepsi')) {
+                if (!p.birth_date) {
+                    checks.push('missing');
+                } else {
+                    const birth = new Date(p.birth_date);
+                    const age = new Date().getFullYear() - birth.getFullYear();
+                    let ageGroup: string | null = null;
+                    if (age >= 18 && age <= 24) ageGroup = 'V18_24';
+                    else if (age >= 25 && age <= 34) ageGroup = 'V25_34';
+                    else if (age >= 35 && age <= 44) ageGroup = 'V35_44';
+                    else if (age >= 45 && age <= 54) ageGroup = 'V45_54';
+                    else if (age >= 55) ageGroup = 'ustu';
+
+                    if (ageGroup && (survey.target_age_group as string[]).map((s: string) => s.toLowerCase()).includes(ageGroup.toLowerCase())) {
+                        checks.push('match');
+                    } else {
+                        checks.push('no_match');
+                    }
+                }
+            }
+
+            if (checks.includes('no_match')) {
+                isMatch = false;
+            } else if (checks.includes('missing')) {
+                isMatch = false;
+                isMissingData = true;
+            }
+
+            const userData = {
+                id: p.id,
+                full_name: p.full_name,
+                email: p.users?.email,
+                city: p.city,
+                gender: p.gender,
+                missing_info: isMissingData
+            };
+
+            if (isMatch) matches.push(userData);
+            else if (isMissingData) incomplete.push(userData);
+        }
+
+        return { matches, incomplete };
+    }
+
+    async notifyMatchingUsers(surveyId: string, overrideUserIds?: string[]) {
+        const survey = await this.findOne(surveyId);
+        if (!survey) return;
+
+        console.log(`[SurveysService] Starting notifications for survey: ${survey.title} (${surveyId})`);
+        console.log(`[SurveysService] Received overrideUserIds:`, overrideUserIds);
+
+        let matches: any[] = [];
+        if (overrideUserIds && overrideUserIds.length > 0) {
+            console.log(`[SurveysService] Using overrideUserIds logic.`);
+            matches = await this.prisma.profiles.findMany({
+                where: { id: { in: overrideUserIds } },
+                include: { users: { select: { email: true } } }
+            });
+        } else {
+            console.log(`[SurveysService] No overrides, using getMatchingUsers logic.`);
+            const result = await this.getMatchingUsers(surveyId) as any;
+            matches = result.matches;
+        }
+
+        console.log(`[SurveysService] Notifying ${matches.length} users.`);
+
+        for (const match of matches) {
+            if (match.users?.email) {
+                try {
+                    const emailHtml = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0"/></head><body style="margin:0;padding:0;background-color:#ffffff;font-family:Arial,sans-serif;"><table border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding:10px 0;"><table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse:collapse;background-color:#ffffff;"><tr><td align="center" style="padding:5px 0;"><span style="font-size:18px;font-weight:900;color:#1e293b;letter-spacing:-1px;">PolTem <span style="color:#f97316;">Akademi</span></span></td></tr><tr><td align="center" style="padding:2px 40px;"><h1 style="font-size:18px;font-weight:800;color:#111827;margin:0;line-height:1.1;">Sizin için yeni bir araştırma mevcut.</h1></td></tr><tr><td align="center" style="padding:2px 60px 8px 60px;color:#4b5563;font-size:12px;line-height:1.3;">Merhaba <strong>${match.full_name || 'Kullanıcı'}</strong>, profilinize özel yeni bir fırsat sizi bekliyor.</td></tr><tr><td align="center" style="padding:0 60px 10px 60px;"><table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;background-color:#f9fafb;border-radius:8px;padding:10px;"><tr><td align="center" style="padding:8px 0 5px 0;"><div style="font-size:9px;color:#6b7280;font-weight:600;text-transform:uppercase;margin:0;">Araştırma Konusu</div><div style="font-size:13px;color:#111827;font-weight:800;margin:0;">"${survey.title}"</div></td></tr><tr><td style="padding:8px 15px;border-top:1px solid #e5e7eb;"><table width="100%" style="border-collapse:collapse;"><tr><td align="center" width="50%"><div style="font-size:8px;color:#6b7280;font-weight:600;margin:0;">💰 ÖDÜL</div><div style="font-size:14px;color:#f97316;font-weight:900;margin:0;">${Number(survey.reward_amount).toFixed(2)} TL</div></td><td align="center" width="50%"><div style="font-size:8px;color:#6b7280;font-weight:600;margin:0;">⏱️ SÜRE</div><div style="font-size:14px;color:#f97316;font-weight:900;margin:0;">${survey.estimated_time} dk</div></td></tr></table></td></tr></table></td></tr><tr><td align="center" style="padding:5px 0 10px 0;"><a href="https://poltemakademi.com" style="background-color:#f97316;color:#ffffff;padding:8px 20px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:800;display:inline-block;">Hemen Başla</a></td></tr><tr><td align="center" style="padding:8px 40px;border-top:1px solid #f3f4f6;color:#9ca3af;font-size:10px;"><span style="font-size:12px;font-weight:800;color:#d1d5db;display:block;margin:0;">PolTem Akademi</span>Bu e-posta PolTem Akademi'ye kayıt olduğunuz için gönderilmiştir.</td></tr></table></td></tr></table></body></html>`;
+
+                    await this.mailService.sendEmail(
+                        match.users.email,
+                        `Yeni Araştırma Daveti: ${survey.title}`,
+                        emailHtml
+                    );
+                } catch (err) {
+                    console.error(`[SurveysService] Failed to notify user ${match.users.email}:`, err.message);
+                }
+            }
+        }
+
+        // Trigger Supabase Edge Function
+        const supabaseUrl = this.configService.get('SUPABASE_FUNCTION_URL');
+        const supabaseSecret = this.configService.get('SUPABASE_DISPATCH_SECRET');
+
+        if (supabaseUrl && supabaseSecret && supabaseSecret !== 'BURAYA_SECRET_GIRIN') {
+            try {
+                await fetch(supabaseUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-survey-dispatch-secret': supabaseSecret
+                    },
+                    body: JSON.stringify({ surveyId, userIds: overrideUserIds }) // Send overrideUserIds if present
+                });
+            } catch (err) {
+                console.error(`[SurveysService] Failed to trigger Supabase function:`, err.message);
+            }
         }
     }
 }

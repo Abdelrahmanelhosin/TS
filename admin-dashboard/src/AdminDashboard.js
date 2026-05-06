@@ -454,6 +454,8 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, completed: 0, rejected: 0 });
   const [activities, setActivities] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [userPage, setUserPage] = useState(1);
+  const usersPerPage = 20;
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -499,6 +501,16 @@ export default function AdminDashboard() {
   const [customTime, setCustomTime] = useState('');
   const [useCustomPricing, setUseCustomPricing] = useState(false);
 
+  // Recipients Preview State
+  const [previewUsers, setPreviewUsers] = useState([]);
+  const [incompleteUsers, setIncompleteUsers] = useState([]);
+  const [showIncomplete, setShowIncomplete] = useState(false);
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [searchUserQuery, setSearchUserQuery] = useState('');
+  const [allUsersList, setAllUsersList] = useState([]); // For adding users manually
+
   // Edit Modes
   const [isEditingSurvey, setIsEditingSurvey] = useState(false);
   const [isEditingUser, setIsEditingUser] = useState(false);
@@ -519,6 +531,40 @@ export default function AdminDashboard() {
   const [editUserTC, setEditUserTC] = useState('');
   const [editUserBank, setEditUserBank] = useState('');
   const [editUserIBAN, setEditUserIBAN] = useState('');
+
+  // Mail Sending State
+  const [mailRecipient, setMailRecipient] = useState('');
+  const [mailSubject, setMailSubject] = useState('');
+  const [mailContent, setMailContent] = useState('');
+  const [mailLoading, setMailLoading] = useState(false);
+  const [mailUserSearchTerm, setMailUserSearchTerm] = useState('');
+  const [mailSearchResults, setMailSearchResults] = useState([]);
+
+  // Easy Survey State
+  const [easySurveyTitle, setEasySurveyTitle] = useState('');
+  const [easySurveyDescription, setEasySurveyDescription] = useState('');
+  const [easySurveyLink, setEasySurveyLink] = useState('');
+  const [easySurveyTargetCount, setEasySurveyTargetCount] = useState('100');
+  const [easySurveyReward, setEasySurveyReward] = useState('27');
+  const [easySurveyTime, setEasySurveyTime] = useState('5');
+  const [easySurveyLoading, setEasySurveyLoading] = useState(false);
+  const [easyGender, setEasyGender] = useState(['Hepsi']);
+  const [easyAge, setEasyAge] = useState(['Hepsi']);
+  const [easyCity, setEasyCity] = useState(['Hepsi']);
+  const [easyEducation, setEasyEducation] = useState(['Hepsi']);
+  const [easyOccupation, setEasyOccupation] = useState(['Hepsi']);
+  const [easyWorkStatus, setEasyWorkStatus] = useState(['Hepsi']);
+  const [easySector, setEasySector] = useState(['Hepsi']);
+  const [easyPosition, setEasyPosition] = useState(['Hepsi']);
+  const [easyIncome, setEasyIncome] = useState(['Hepsi']);
+  const [easyMarital, setEasyMarital] = useState(['Hepsi']);
+  const [easyChildren, setEasyChildren] = useState(['Hepsi']);
+  
+  // Rejection Modal States
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionSubmissionId, setRejectionSubmissionId] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionLoading, setRejectionLoading] = useState(false);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -547,7 +593,7 @@ export default function AdminDashboard() {
         id: u.id,
         name: u.full_name || u.full_name_bank || u.users?.email || 'İsimsiz',
         email: u.users?.email || '—',
-        role: u.role === 'admin' ? 'Admin' : (u.role === 'researcher' ? 'Araştرمacı' : 'Kullanıcı'),
+        role: u.role === 'admin' ? 'Admin' : (u.role === 'researcher' ? 'Araştırmacı' : 'Kullanıcı'),
         registeredAt: u.created_at,
         profile: u || {}
       }));
@@ -786,6 +832,29 @@ export default function AdminDashboard() {
   }, [selectedRequest, selectedSurvey, selectedUser]);
 
   useEffect(() => {
+    const searchUsers = async () => {
+      if (mailUserSearchTerm.length < 2) {
+        setMailSearchResults([]);
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE_URL}/admin/users?search=${mailUserSearchTerm}&take=5`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setMailSearchResults(data.items || []);
+        }
+      } catch (err) {
+        console.error('Mail user search error:', err);
+      }
+    };
+
+    const timer = setTimeout(searchUsers, 300);
+    return () => clearTimeout(timer);
+  }, [mailUserSearchTerm, token]);
+
+  useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 30000); // 30 saniyede bir güncelle
     return () => clearInterval(interval);
@@ -891,7 +960,49 @@ export default function AdminDashboard() {
     }
   };
 
-  const handlePublish = async () => {
+  const fetchMatchingUsers = async () => {
+    if (!selectedRequest) return;
+    setPreviewLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/surveys/${selectedRequest.id}/matching-users`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          target_gender: editGender.map(s => s.toLowerCase()),
+          target_age_group: editAge.map(s => s.toLowerCase()),
+          target_city: editCity.map(s => s.toLowerCase()),
+          target_education: editEducation.map(s => s.toLowerCase()),
+          target_occupation: editOccupation.map(s => s.toLowerCase()),
+          target_employment_status: editWorkStatus.map(s => s.toLowerCase()),
+          target_sector: editSector.map(s => s.toLowerCase()),
+          target_position: editPosition.map(s => s.toLowerCase()),
+          target_income: editIncome.map(s => s.toLowerCase()),
+          target_marital_status: editMarital.map(s => s.toLowerCase()),
+          target_child_count: editChildren.map(s => s.toLowerCase()),
+        })
+      });
+      const data = await response.json();
+      setPreviewUsers(data.matches || []);
+      setIncompleteUsers(data.incomplete || []);
+      setSelectedUserIds((data.matches || []).map(u => u.id));
+      setShowPreviewModal(true);
+      setShowIncomplete(false);
+    } catch (error) {
+      console.error('Error fetching matching users:', error);
+      alert('Kullanıcı listesi alınamadı.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handlePublish = async (isConfirmed = false) => {
+    if (isConfirmed !== true) {
+      await fetchMatchingUsers();
+      return;
+    }
     if (!targetCount || parseInt(targetCount) <= 0) return alert('Lütfen geçerli bir hedef sayısı girin.');
 
     const packagePrice = selectedPackage.price;
@@ -936,19 +1047,25 @@ export default function AdminDashboard() {
           description: editDescription,
           platform: editPlatform,
           total_cost: totalCost,
-          commission_rate: Math.round(((totalCost - (parsedTarget * reward)) / totalCost) * 100)
+          commission_rate: Math.round(((totalCost - (parsedTarget * reward)) / totalCost) * 100),
+          selectedUserIds: selectedUserIds
         }),
       });
 
-      if (response.ok) { // Changed res to response to match variable name
-        // Hedef sayısını da güncelleyelim (Ayrı bir endpoint ise oraya da istek atılabilir)
-        // Mevcut API'de approve içinde reward ve time var, target_audience schema'da var mı bakılmalı
-        alert('Anket başarıyla onaylandı ve yayımlandı!');
-        setSelectedRequest(null);
-        setTargetCount('');
-        fetchData();
+      if (response.ok) {
+        // Mark selected users as sent in UI
+        setPreviewUsers(prev => prev.map(u => selectedUserIds.includes(u.id) ? { ...u, sent: true } : u));
+        
+        alert('Anket başarıyla onaylandı ve bildirimler gönderiliyor!');
+        
+        setTimeout(() => {
+          setShowPreviewModal(false);
+          setSelectedRequest(null);
+          setTargetCount('');
+          fetchData();
+        }, 3000);
       } else {
-        const errData = await response.json(); // Changed res to response
+        const errData = await response.json();
         alert(`Hata: ${errData.message}`);
       }
     } catch (err) {
@@ -1406,24 +1523,43 @@ export default function AdminDashboard() {
   const [detailTab, setDetailTab] = useState('analysis'); // 'analysis' or 'payment'
 
   const handleUpdateSubmissionStatus = async (submissionId, newStatus) => {
+    if (newStatus === 'rejected') {
+      setRejectionSubmissionId(submissionId);
+      setRejectionReason('');
+      setShowRejectModal(true);
+      return;
+    }
+    
+    confirmSubmissionStatus(submissionId, newStatus);
+  };
+
+  const confirmSubmissionStatus = async (submissionId, newStatus, reason = null) => {
     try {
+      if (reason) setRejectionLoading(true);
       const resp = await fetch(`${API_BASE_URL}/admin/submissions/${submissionId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ status: newStatus, reject_reason: reason })
       });
       if (resp.ok) {
         if (selectedSurvey) fetchSurveyDetails(selectedSurvey.id);
-        alert(`Katılım durumu '${newStatus}' olarak güncellendi.`);
+        if (reason) {
+          setShowRejectModal(false);
+          alert('Red işlemi başarıyla tamamlandı ve kullanıcıya bildirildi.');
+        } else {
+          alert(`Katılım durumu '${newStatus}' olarak güncellendi.`);
+        }
       } else {
         const errData = await resp.json();
         alert(`Hata: ${errData.message || 'Güncelleme başarısız.'}`);
       }
     } catch (err) {
       alert('Ağ hatası: Sunucuya ulaşılamadı.');
+    } finally {
+      setRejectionLoading(false);
     }
   };
 
@@ -1440,6 +1576,427 @@ export default function AdminDashboard() {
         <Icon className={`w-5 h-5 ${isActive ? 'text-orange-500' : 'text-slate-500'}`} />
         <span>{label}</span>
       </button>
+    );
+  };
+
+  const handleSendMail = async (e) => {
+    e.preventDefault();
+    if (!mailRecipient || !mailSubject || !mailContent) return alert('Lütfen tüm alanları doldurun.');
+    setMailLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/send-email`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ to: mailRecipient, subject: mailSubject, content: mailContent })
+      });
+      if (res.ok) {
+        const result = await res.json();
+        console.log('Email sent result:', result);
+        alert('Mail başarıyla gönderildi!');
+        setMailRecipient('');
+        setMailSubject('');
+        setMailContent('');
+      } else {
+        const errorData = await res.json();
+        console.error('Email failed server response:', errorData);
+        alert('Mail gönderimi başarısız oldu.');
+      }
+    } catch (err) {
+      alert('İşlem sırasında hata oluştu.');
+    } finally {
+      setMailLoading(false);
+    }
+  };
+
+  const handleEasySurveyCreate = async (e) => {
+    e.preventDefault();
+    if (!easySurveyTitle || !easySurveyLink) return alert('Lütfen Başlık ve Anket Linkini doldurun.');
+    setEasySurveyLoading(true);
+
+    const toArray = (arr) => (arr.some(v => v.toLowerCase() === 'hepsi') ? [] : arr);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/surveys/easy-create`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title: easySurveyTitle,
+          description: easySurveyDescription,
+          survey_link: easySurveyLink,
+          target_audience: parseInt(easySurveyTargetCount),
+          reward_amount: parseFloat(easySurveyReward),
+          estimated_time: parseInt(easySurveyTime),
+          target_gender: toArray(easyGender),
+          target_age_group: toArray(easyAge),
+          target_city: toArray(easyCity),
+          target_education: toArray(easyEducation),
+          target_occupation: toArray(easyOccupation),
+          target_employment_status: toArray(easyWorkStatus),
+          target_sector: toArray(easySector),
+          target_position: toArray(easyPosition),
+          target_income: toArray(easyIncome),
+          target_marital_status: toArray(easyMarital),
+          target_child_count: toArray(easyChildren)
+        })
+      });
+      if (res.ok) {
+        alert('Anket başarıyla oluşturuldu و Yayına alındي!');
+        setEasySurveyTitle('');
+        setEasySurveyDescription('');
+        setEasySurveyLink('');
+        fetchData();
+        setActiveView('surveys');
+      } else {
+        alert('Anket oluşturulamadı.');
+      }
+    } catch (err) {
+      alert('İşlem sırasında hata oluştu.');
+    } finally {
+      setEasySurveyLoading(false);
+    }
+  };
+
+  const renderSendMail = () => (
+    <div className="max-w-6xl mx-auto py-12 px-6 animate-in fade-in slide-in-from-bottom-10 duration-1000">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* Left Panel: User Selection */}
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-[#131B2F]/60 backdrop-blur-2xl border border-white/5 rounded-[2.5rem] p-8 shadow-2xl h-full">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 bg-orange-500/20 rounded-xl flex items-center justify-center border border-orange-500/30">
+                <Users className="w-5 h-5 text-orange-500" />
+              </div>
+              <h3 className="text-xl font-black text-white tracking-tight">Kullanıcı Seç</h3>
+            </div>
+
+            <div className="relative mb-6">
+              <input
+                type="text"
+                value={mailUserSearchTerm}
+                onChange={(e) => setMailUserSearchTerm(e.target.value)}
+                placeholder="İsim veya e-posta ara..."
+                className="w-full bg-[#0B1121] border border-white/5 rounded-2xl px-5 py-4 text-white placeholder:text-slate-600 outline-none focus:border-orange-500/50 transition-all font-bold text-sm"
+              />
+              <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-700" />
+            </div>
+
+            <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+              {(mailSearchResults.length > 0 ? mailSearchResults : users).map(u => (
+                <div
+                  key={u.id}
+                  onClick={() => {
+                    setMailRecipient(u.users?.email || u.email || '');
+                    setMailUserSearchTerm(u.name || '');
+                  }}
+                  className={`p-4 rounded-2xl cursor-pointer transition-all border group ${mailRecipient === (u.users?.email || u.email) ? 'bg-orange-500 border-orange-400 shadow-lg shadow-orange-500/20' : 'bg-white/5 border-transparent hover:border-white/10 hover:bg-white/10'}`}
+                >
+                  <p className={`font-black text-sm ${mailRecipient === (u.users?.email || u.email) ? 'text-white' : 'text-slate-200 group-hover:text-orange-400'}`}>{u.name || 'İsimsiz'}</p>
+                  <p className={`text-[10px] font-bold mt-0.5 ${mailRecipient === (u.users?.email || u.email) ? 'text-white/70' : 'text-slate-500'}`}>{u.email || u.users?.email}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel: Composition */}
+        <div className="lg:col-span-2">
+          <div className="bg-[#131B2F]/60 backdrop-blur-2xl border border-white/5 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
+            <div className="absolute -top-24 -right-24 w-64 h-64 bg-orange-500/10 blur-[100px] rounded-full"></div>
+            
+            <div className="relative z-10 space-y-8">
+              <div className="flex justify-between items-center">
+                <div className="space-y-1">
+                  <h2 className="text-4xl font-black text-white tracking-tighter">Mesaj Yaz</h2>
+                  <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">Resend API İle Güçlendirildi</p>
+                </div>
+                <div className="w-16 h-16 bg-[#0B1121] rounded-2xl flex items-center justify-center border border-white/5">
+                  <Send className="w-8 h-8 text-orange-500" />
+                </div>
+              </div>
+
+              <form onSubmit={handleSendMail} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Alıcı E-posta</label>
+                    <input
+                      type="email"
+                      required
+                      value={mailRecipient}
+                      onChange={(e) => setMailRecipient(e.target.value)}
+                      placeholder="seçilen@mail.com"
+                      className="w-full bg-[#0B1121] border border-white/5 rounded-2xl px-6 py-4 text-white font-bold outline-none focus:border-orange-500/50 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Konu Başlığı</label>
+                    <input
+                      type="text"
+                      required
+                      value={mailSubject}
+                      onChange={(e) => setMailSubject(e.target.value)}
+                      placeholder="Mesaj konusu..."
+                      className="w-full bg-[#0B1121] border border-white/5 rounded-2xl px-6 py-4 text-white font-bold outline-none focus:border-orange-500/50 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">İçerik</label>
+                  <textarea
+                    required
+                    rows={10}
+                    value={mailContent}
+                    onChange={(e) => setMailContent(e.target.value)}
+                    placeholder="Mesajınızı buraya girin..."
+                    className="w-full bg-[#0B1121] border border-white/5 rounded-[2rem] px-8 py-6 text-white font-medium outline-none focus:border-orange-500/50 transition-all resize-none leading-relaxed"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={mailLoading}
+                  className="w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white font-black py-6 rounded-[1.5rem] shadow-xl shadow-orange-500/20 transition-all active:scale-95 flex items-center justify-center gap-4 text-xl disabled:opacity-50 group"
+                >
+                  {mailLoading ? (
+                    <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  ) : (
+                    <>
+                      GÖNDERİMİ BAŞLAT <Send className="w-6 h-6 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderEasySurvey = () => {
+    const unitPrice = parseFloat(easySurveyReward) || 0;
+    const count = parseInt(easySurveyTargetCount) || 0;
+    const totalBudget = unitPrice * count;
+    const vatBase = totalBudget / 1.2;
+    const vatAmount = totalBudget - vatBase;
+    const totalReward = count * (unitPrice * 0.74);
+    const netProfit = vatBase - totalReward;
+
+    const TIME_PACKAGES = [
+      { id: '1', label: '0-4 dk', price: 27, time: 4 },
+      { id: '2', label: '5-9 dk', price: 34, time: 7 },
+      { id: '3', label: '10-14 dk', price: 40, time: 12 },
+      { id: '4', label: '15-19 dk', price: 47, time: 17 },
+    ];
+
+    return (
+      <div className="max-w-7xl mx-auto py-12 px-6 animate-in fade-in slide-in-from-bottom-10 duration-1000">
+        <div className="flex flex-col md:flex-row items-end justify-between mb-16 gap-8">
+          <div className="space-y-4">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-orange-500/10 border border-orange-500/20 rounded-full">
+              <Sparkles className="w-4 h-4 text-orange-500" />
+              <span className="text-[10px] font-black text-orange-500 uppercase tracking-[0.2em]">Akademik Panel</span>
+            </div>
+            <h2 className="text-6xl font-black text-white tracking-tighter">Hızlı Paket <span className="text-orange-500">Tanımla</span></h2>
+            <p className="text-slate-400 font-bold text-xl max-w-xl">Süreye göre otomatik fiyatlandırma ve detaylı kâr analizi.</p>
+          </div>
+          <div className="hidden lg:block">
+            <div className="w-48 h-48 bg-gradient-to-br from-orange-500/20 to-blue-500/20 rounded-[3rem] border border-white/5 backdrop-blur-3xl flex items-center justify-center relative group">
+              <div className="absolute inset-0 bg-orange-500/10 blur-3xl rounded-full group-hover:bg-orange-500/20 transition-all"></div>
+              <WalletCards className="w-20 h-20 text-white/20 group-hover:text-orange-500 transition-all duration-700 group-hover:scale-110" />
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleEasySurveyCreate} className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+          <div className="lg:col-span-8 space-y-10">
+            <div className="bg-[#131B2F]/40 backdrop-blur-2xl border border-white/5 rounded-[3.5rem] p-12 shadow-2xl space-y-10">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10">
+                  <FileText className="w-6 h-6 text-orange-500" />
+                </div>
+                <h3 className="text-2xl font-black text-white">Paket ve Detaylar</h3>
+              </div>
+
+              <div className="space-y-10">
+                {/* Minute Packages */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                  {TIME_PACKAGES.map(pkg => (
+                    <button
+                      key={pkg.id}
+                      type="button"
+                      onClick={() => {
+                        setEasySurveyReward(pkg.price.toString());
+                        setEasySurveyTime(pkg.time.toString());
+                        setUseCustomPricing(false);
+                      }}
+                      className={`p-6 rounded-[2rem] border-2 transition-all flex flex-col items-center gap-2 group ${!useCustomPricing && easySurveyReward === pkg.price.toString() ? 'bg-orange-500 border-orange-400 shadow-xl shadow-orange-500/20' : 'bg-[#0B1121] border-white/5 hover:border-white/10'}`}
+                    >
+                      <span className={`text-xs font-black uppercase tracking-widest ${!useCustomPricing && easySurveyReward === pkg.price.toString() ? 'text-white/80' : 'text-slate-500'}`}>{pkg.label}</span>
+                      <span className={`text-2xl font-black ${!useCustomPricing && easySurveyReward === pkg.price.toString() ? 'text-white' : 'text-white group-hover:text-orange-500'}`}>{pkg.price} TL</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="bg-[#0B1121] p-8 rounded-[2.5rem] border border-white/5 space-y-8">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Settings className="w-5 h-5 text-slate-500" />
+                      <span className="text-sm font-black text-white">Özel Tutar & Süre</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUseCustomPricing(!useCustomPricing)}
+                      className={`w-12 h-6 rounded-full transition-all relative ${useCustomPricing ? 'bg-orange-500' : 'bg-slate-700'}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${useCustomPricing ? 'left-7' : 'left-1'}`}></div>
+                    </button>
+                  </div>
+
+                  {useCustomPricing && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in zoom-in-95 duration-300">
+                      <div className="space-y-3">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Birim Fiyat (TL)</label>
+                        <input
+                          type="number"
+                          value={easySurveyReward}
+                          onChange={(e) => setEasySurveyReward(e.target.value)}
+                          className="w-full bg-[#131B2F] border-2 border-white/5 rounded-2xl px-6 py-4 text-white font-black outline-none focus:border-orange-500/50"
+                        />
+                      </div>
+                      <div className="space-y-3">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Süre (Dakika)</label>
+                        <input
+                          type="number"
+                          value={easySurveyTime}
+                          onChange={(e) => setEasySurveyTime(e.target.value)}
+                          className="w-full bg-[#131B2F] border-2 border-white/5 rounded-2xl px-6 py-4 text-white font-black outline-none focus:border-orange-500/50"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+                   <div className="space-y-4">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-6">Araştırma Başlığı</label>
+                      <input
+                        type="text"
+                        required
+                        value={easySurveyTitle}
+                        onChange={(e) => setEasySurveyTitle(e.target.value)}
+                        className="w-full bg-[#0B1121] border-2 border-white/5 rounded-2xl px-8 py-5 text-white font-black outline-none focus:border-orange-500/50"
+                        placeholder="Örn: Müşteri Deneyimi Araştırması"
+                      />
+                   </div>
+                   <div className="space-y-4">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-6">Hedef Katılımcı Sayısı</label>
+                      <input
+                        type="number"
+                        required
+                        value={easySurveyTargetCount}
+                        onChange={(e) => setEasySurveyTargetCount(e.target.value)}
+                        className="w-full bg-[#0B1121] border-2 border-white/5 rounded-2xl px-8 py-5 text-white font-black outline-none focus:border-orange-500/50"
+                      />
+                   </div>
+                   <div className="md:col-span-2 space-y-4">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-6">Anket Linki (URL)</label>
+                      <input
+                        type="url"
+                        required
+                        value={easySurveyLink}
+                        onChange={(e) => setEasySurveyLink(e.target.value)}
+                        className="w-full bg-[#0B1121] border-2 border-white/5 rounded-2xl px-8 py-5 text-white font-black outline-none focus:border-orange-500/50"
+                        placeholder="https://forms.gle/..."
+                      />
+                   </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-[#131B2F]/40 backdrop-blur-2xl border border-white/5 rounded-[3.5rem] p-12 shadow-2xl space-y-10">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10">
+                  <Users className="w-6 h-6 text-blue-500" />
+                </div>
+                <h3 className="text-2xl font-black text-white">Hedef Kitle Filtreleri</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                <MultiSelect label="Cinsiyet" options={GENDER_OPTIONS} selected={easyGender} onChange={setEasyGender} />
+                <MultiSelect label="Yaş Grubu" options={AGE_OPTIONS} selected={easyAge} onChange={setEasyAge} />
+                <MultiSelect label="Şehirler" options={CITY_OPTIONS} selected={easyCity} onChange={setEasyCity} />
+                <MultiSelect label="Eğitim" options={EDUCATION_OPTIONS} selected={easyEducation} onChange={setEasyEducation} />
+                <MultiSelect label="Meslek" options={OCCUPATION_OPTIONS} selected={easyOccupation} onChange={setEasyOccupation} />
+                <MultiSelect label="Çalışma" options={WORK_STATUS_OPTIONS} selected={easyWorkStatus} onChange={setEasyWorkStatus} />
+                <MultiSelect label="Sektör" options={SECTOR_OPTIONS} selected={easySector} onChange={setEasySector} />
+                <MultiSelect label="Pozisyon" options={POSITION_OPTIONS} selected={easyPosition} onChange={setEasyPosition} />
+                <MultiSelect label="Gelir" options={INCOME_OPTIONS} selected={easyIncome} onChange={setEasyIncome} />
+                <MultiSelect label="Medeni" options={MARITAL_OPTIONS} selected={easyMarital} onChange={setEasyMarital} />
+                <MultiSelect label="Çocuk" options={CHILDREN_OPTIONS} selected={easyChildren} onChange={setEasyChildren} />
+              </div>
+            </div>
+          </div>
+
+          <div className="lg:col-span-4 space-y-10">
+            <div className="sticky top-12 space-y-10">
+              <div className="bg-gradient-to-br from-[#1A233A] to-[#0B1121] rounded-[3.5rem] p-10 border border-white/5 shadow-2xl space-y-10">
+                <div className="space-y-6">
+                   <p className="text-[10px] font-black uppercase tracking-[0.4em] text-orange-500">Özet Bilgiler</p>
+                   <div className="space-y-4">
+                      <div className="flex justify-between items-center text-slate-400">
+                        <span className="text-sm font-bold">Birim Fiyat</span>
+                        <span className="text-sm font-black text-white">{unitPrice} TL</span>
+                      </div>
+                      <div className="flex justify-between items-center text-slate-400">
+                        <span className="text-sm font-bold">Katılımcı</span>
+                        <span className="text-sm font-black text-white">{count} Kişi</span>
+                      </div>
+                      <div className="flex justify-between items-center pt-6 border-t border-white/5">
+                        <span className="text-lg font-black text-white">TOPLAM TUTAR</span>
+                        <span className="text-3xl font-black text-orange-500 tracking-tighter">{totalBudget.toLocaleString('tr-TR')} TL</span>
+                      </div>
+                   </div>
+                </div>
+
+                <div className="space-y-6 pt-8 border-t border-white/5">
+                   <p className="text-[10px] font-black uppercase tracking-[0.4em] text-blue-500">Yönetici Detayları</p>
+                   <div className="space-y-4 bg-[#0B1121]/50 p-6 rounded-3xl border border-white/5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">KDV Matrahı</span>
+                        <span className="text-sm font-black text-white">{vatBase.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} TL</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">Hesaplanan KDV (%20)</span>
+                        <span className="text-sm font-black text-white">{vatAmount.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} TL</span>
+                      </div>
+                      <div className="flex justify-between items-center pt-4 mt-2 border-t border-white/5">
+                        <span className="text-[10px] font-black text-emerald-500 uppercase">Tahmini Net Kâr</span>
+                        <span className="text-xl font-black text-emerald-500">{netProfit.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} TL</span>
+                      </div>
+                   </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={easySurveyLoading}
+                  className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black py-7 rounded-2xl shadow-xl shadow-orange-500/20 transition-all active:scale-95 flex items-center justify-center gap-4 text-xl"
+                >
+                  {easySurveyLoading ? <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin"></div> : (
+                    <>ANKETİ YAYINA AL <CheckCircle2 className="w-6 h-6" /></>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
     );
   };
 
@@ -1474,11 +2031,16 @@ export default function AdminDashboard() {
           <SidebarItem icon={Users} label="Kullanıcılarımız" viewId="users" />
           <SidebarItem icon={ListTodo} label="Anket Yönetimi" viewId="surveys" />
           <SidebarItem icon={WalletCards} label="Ödeme Talimatları" viewId="payments" />
+          
+          <div className="mt-10 mb-4 px-2 text-[11px] font-black text-slate-500 uppercase tracking-[0.2em]">Hızlı İşlemler</div>
+          <SidebarItem icon={Sparkles} label="Kolay Anket (Hocalar)" viewId="easy-survey" />
+          <SidebarItem icon={Send} label="Mail Gönder" viewId="send-mail" />
         </div>
       </aside>
 
       {/* --- ANA İÇERİK (MAIN CONTENT) --- */}
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
+
         <div className="absolute top-1/4 right-1/4 w-[500px] h-[500px] bg-orange-500/5 blur-[120px] rounded-full pointer-events-none"></div>
         <div className="absolute bottom-0 left-1/4 w-[400px] h-[400px] bg-blue-500/5 blur-[100px] rounded-full pointer-events-none"></div>
 
@@ -1490,6 +2052,8 @@ export default function AdminDashboard() {
               {activeView === 'users' && 'Kullanıcı Yönetimi'}
               {activeView === 'surveys' && 'Anket Yönetimi'}
               {activeView === 'payments' && 'Ödeme Talimatı Tablosu'}
+              {activeView === 'easy-survey' && 'Profesörler İçin Hızlı Anket'}
+              {activeView === 'send-mail' && 'Sistemden Mail Gönderimi'}
             </h1>
             <p className="text-xs text-slate-400 mt-1 font-medium tracking-wide">PolTem Akademi Yönetim Paneli</p>
           </div>
@@ -1669,49 +2233,67 @@ export default function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#1A233A]">
-                      {users.filter(u =>
-                        (u.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (u.email || '').toLowerCase().includes(searchTerm.toLowerCase())
-                      ).map(u => (
-                        <tr key={u.id} className="hover:bg-[#1A233A]/50 transition-colors group cursor-pointer" onClick={() => setSelectedUser(u)}>
-                          <td className="px-8 py-6 font-mono text-slate-400 text-sm">{u.id}</td>
-                          <td className="px-8 py-6">
-                            <div className="flex flex-col">
-                              <span className="font-bold text-white group-hover:text-orange-400 transition-colors">{u.name}</span>
-                              <div className={`flex items-center gap-1 mt-1 text-[9px] font-black ${(u.trust_score || 100) >= 80 ? 'text-emerald-500' :
-                                (u.trust_score || 100) >= 50 ? 'text-orange-500' :
-                                  'text-red-500'
-                                }`}>
-                                <Sparkles className="w-2.5 h-2.5" />
-
+                      {users
+                        .filter(u =>
+                          (u.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (u.email || '').toLowerCase().includes(searchTerm.toLowerCase())
+                        )
+                        .slice((userPage - 1) * usersPerPage, userPage * usersPerPage)
+                        .map(u => (
+                          <tr key={u.id} className="hover:bg-[#1A233A]/50 transition-colors group cursor-pointer" onClick={() => setSelectedUser(u)}>
+                            <td className="px-8 py-6 font-mono text-slate-400 text-sm">{u.id}</td>
+                            <td className="px-8 py-6">
+                              <div className="flex flex-col">
+                                <span className="font-bold text-white group-hover:text-orange-400 transition-colors">{u.name}</span>
+                                <div className={`flex items-center gap-1 mt-1 text-[9px] font-black ${(u.trust_score || 100) >= 80 ? 'text-emerald-500' :
+                                  (u.trust_score || 100) >= 50 ? 'text-orange-500' :
+                                    'text-red-500'
+                                  }`}>
+                                  <Sparkles className="w-2.5 h-2.5" />
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-8 py-6 text-slate-400 text-sm">{u.email}</td>
-                          <td className="px-8 py-6">
-                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ${u.role === 'Araştırmacı' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 'bg-[#1A233A] text-slate-300 border border-[#2A3441]'}`}>
-                              {u.role}
-                            </span>
-                          </td>
-                          <td className="px-8 py-6 text-right">
-                            <div className="flex items-center justify-end gap-3">
-                              {u.role !== 'Araştırmacı' && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleMakeResearcher(u.id, true); }}
-                                  className="text-[10px] font-black bg-[#1A233A] hover:bg-gradient-to-r hover:from-orange-500 hover:to-amber-500 text-slate-300 hover:text-white px-4 py-2.5 rounded-xl transition-all border border-[#2A3441] hover:border-transparent uppercase tracking-wider shadow-lg"
-                                >
-                                  Araştırmacı Yap
+                            </td>
+                            <td className="px-8 py-6 text-slate-400 text-sm">{u.email}</td>
+                            <td className="px-8 py-6">
+                              <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ${u.role === 'Araştırmacı' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 'bg-[#1A233A] text-slate-300 border border-[#2A3441]'}`}>
+                                {u.role}
+                              </span>
+                            </td>
+                            <td className="px-8 py-6 text-right">
+                              <div className="flex items-center justify-end gap-3">
+                                {u.role !== 'Araştırmacı' && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleMakeResearcher(u.id, true); }}
+                                    className="text-[10px] font-black bg-[#1A233A] hover:bg-gradient-to-r hover:from-orange-500 hover:to-amber-500 text-slate-300 hover:text-white px-4 py-2.5 rounded-xl transition-all border border-[#2A3441] hover:border-transparent uppercase tracking-wider shadow-lg"
+                                  >
+                                    Araştırmacı Yap
+                                  </button>
+                                )}
+                                <button className="p-2.5 bg-[#1A233A] border border-[#2A3441] rounded-xl group-hover:border-orange-500/50 transition-colors">
+                                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-orange-500" />
                                 </button>
-                              )}
-                              <button className="p-2.5 bg-[#1A233A] border border-[#2A3441] rounded-xl group-hover:border-orange-500/50 transition-colors">
-                                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-orange-500" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
+                </div>
+
+                {/* Pagination UI */}
+                <div className="p-6 border-top border-[#1A233A] flex justify-center gap-2">
+                  {Array.from({ length: Math.ceil(users.filter(u =>
+                    (u.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    (u.email || '').toLowerCase().includes(searchTerm.toLowerCase())
+                  ).length / usersPerPage) }, (_, i) => i + 1).map(page => (
+                    <button
+                      key={page}
+                      onClick={() => setUserPage(page)}
+                      className={`w-10 h-10 rounded-xl font-bold text-xs transition-all ${userPage === page ? 'bg-orange-500 text-white shadow-lg' : 'bg-[#1A233A] text-slate-400 hover:text-white'}`}
+                    >
+                      {page}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -1859,6 +2441,9 @@ export default function AdminDashboard() {
                 </div>
               </div>
             )}
+
+            {activeView === 'easy-survey' && renderEasySurvey()}
+            {activeView === 'send-mail' && renderSendMail()}
 
           </div>
         </div>
@@ -2289,10 +2874,20 @@ export default function AdminDashboard() {
             <div className="p-8 border-t border-[#1A233A] bg-[#131B2F]/50">
               <button
                 onClick={handlePublish}
-                className="w-full py-5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-lg font-black rounded-2xl shadow-[0_0_30px_rgba(249,115,22,0.3)] transition-all active:scale-95 flex items-center justify-center gap-3"
+                disabled={previewLoading}
+                className={`w-full py-5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-lg font-black rounded-2xl shadow-[0_0_30px_rgba(249,115,22,0.3)] transition-all active:scale-95 flex items-center justify-center gap-3 ${previewLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
               >
-                <Sparkles className="w-6 h-6" />
-                YAYIMLA
+                {previewLoading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    <span>LİSTE HAZIRLANIYOR...</span>
+                  </div>
+                ) : (
+                  <>
+                    <Sparkles className="w-6 h-6" />
+                    YAYIMLA
+                  </>
+                )}
               </button>
               <p className="text-xs text-center text-slate-500 mt-4 font-medium flex items-center justify-center gap-2">
                 <AlertCircle className="w-4 h-4" /> Butona basıldığında katılımcılarımıza bildirim emaili olarak gönderilecek.
@@ -2608,6 +3203,12 @@ export default function AdminDashboard() {
                         }}
                       />
                       <button
+                        onClick={() => document.getElementById('smartMatchUpload').click()}
+                        className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-black rounded-xl transition-all text-[10px] uppercase tracking-widest flex items-center gap-2"
+                      >
+                        <CheckCircle2 className="w-4 h-4 ml-2" /> Akıllı Doğrulama
+                      </button>
+                      <button
                         onClick={() => document.getElementById('csvMatchUpload').click()}
                         className="px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 font-black rounded-xl transition-all text-[10px] uppercase tracking-widest flex items-center gap-2"
                       >
@@ -2676,9 +3277,16 @@ export default function AdminDashboard() {
                                       </div>
                                     </div>
                                     <span className="text-slate-500 text-[10px] font-black mt-0.5">
-                                      {p.metadata?.shadow ? `Kod: ${p.unique_id || p.metadata?.unique_id || '—'}` : (p.users?.email || '—')}
+                                      {p.unique_id || p.metadata?.unique_id ? `Kod: ${p.unique_id || p.metadata?.unique_id}` : `Email: ${p.users?.email || '—'}`}
                                     </span>
                                     <span className="text-emerald-500 text-[9px] font-mono font-black mt-1 opacity-80">{p.users?.profiles?.iban || '—'}</span>
+
+                                    {p.reject_reason && (
+                                      <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-xl text-[10px] font-black text-red-400 flex items-start gap-2">
+                                        <Ban className="w-3 h-3 shrink-0 mt-0.5" />
+                                        <span>{p.reject_reason}</span>
+                                      </div>
+                                    )}
 
                                     {p.metadata?.validation_errors && p.metadata.validation_errors.length > 0 && (
                                       <div className="mt-1 text-[8px] text-red-400 font-bold leading-tight bg-red-400/5 p-1 rounded border border-red-400/10">
@@ -2710,18 +3318,16 @@ export default function AdminDashboard() {
                                         <Check className="w-4 h-4" />
                                       </button>
                                     )}
-                                    {p.status !== 'rejected' && (
-                                      <button
-                                        onClick={() => handleUpdateSubmissionStatus(p.id, 'rejected')}
-                                        className="p-2.5 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition-all border border-red-500/20 shadow-lg"
-                                        title="Reddet"
-                                      >
-                                        <Ban className="w-4 h-4" />
-                                      </button>
-                                    )}
+                                    <button
+                                      onClick={() => handleUpdateSubmissionStatus(p.id, 'rejected')}
+                                      className={`p-2.5 rounded-xl transition-all border shadow-lg ${p.status === 'rejected' ? 'bg-orange-500/10 hover:bg-orange-500 text-orange-500 hover:text-white border-orange-500/20' : 'bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border-red-500/20'}`}
+                                      title={p.status === 'rejected' ? "Sebebi Düzenle" : "Reddet"}
+                                    >
+                                      {p.status === 'rejected' ? <Settings className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
+                                    </button>
                                   </div>
                                   <div className="mt-2 text-[9px] text-slate-600 font-mono tracking-tighter">
-                                    {new Date(p.created_at).toLocaleString('tr-TR')}
+                                    {p.created_at ? new Date(p.created_at).toLocaleString('tr-TR') : '—'}
                                   </div>
                                 </td>
                               </tr>
@@ -2877,6 +3483,258 @@ export default function AdminDashboard() {
       )}
 
 
+      {/* --- Recipients Preview Modal --- */}
+      {showPreviewModal && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] animate-in fade-in" onClick={() => setShowPreviewModal(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-[110] p-4">
+            <div className="bg-[#131B2F] w-full max-w-4xl max-h-[90vh] rounded-[3rem] border border-white/10 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+              <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/5">
+                <div>
+                  <h3 className="text-2xl font-black text-white flex items-center gap-3 text-left">
+                    <Users className="w-7 h-7 text-orange-500" /> Alıcı Listesi Önizleme
+                  </h3>
+                  <p className="text-slate-500 text-xs mt-1 font-bold text-left">Bu anket yayımlandığında toplam {selectedUserIds.length} kişiye bildirim gidecek.</p>
+                </div>
+                <button onClick={() => setShowPreviewModal(false)} className="p-3 text-slate-400 hover:text-white bg-white/5 rounded-2xl transition-all"><X className="w-5 h-5" /></button>
+              </div>
+
+              <div className="p-8 space-y-6 flex-1 overflow-y-auto text-left">
+                {/* Statistics Row */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-2xl">
+                    <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest">Tam Eşleşenler</p>
+                    <p className="text-2xl font-black text-white">{previewUsers.length} Kişi</p>
+                  </div>
+                  <div className={`p-4 rounded-2xl border transition-all cursor-pointer ${showIncomplete ? 'bg-orange-500/20 border-orange-500' : 'bg-white/5 border-white/5 hover:border-white/10'}`} onClick={() => setShowIncomplete(!showIncomplete)}>
+                    <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Eksik Profiller</p>
+                    <p className="text-2xl font-black text-white">{incompleteUsers.length} Kişi</p>
+                  </div>
+                </div>
+
+                {/* Search & Add Section */}
+                <div className="bg-[#0B1121] p-6 rounded-[2rem] border border-white/5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Search className="w-5 h-5 text-slate-500" />
+                    <input
+                      type="text"
+                      placeholder="Listeye manuel kullanıcı ekle (İsim veya Email)..."
+                      className="flex-1 bg-transparent border-none outline-none text-white font-bold placeholder:text-slate-600"
+                      value={searchUserQuery}
+                      onChange={(e) => setSearchUserQuery(e.target.value)}
+                    />
+                  </div>
+                  {searchUserQuery.length > 2 && (
+                    <div className="grid grid-cols-1 gap-2 mt-2">
+                      {users
+                        .filter(u => 
+                          (u.name.toLowerCase().includes(searchUserQuery.toLowerCase()) || 
+                           u.email.toLowerCase().includes(searchUserQuery.toLowerCase())) &&
+                          !selectedUserIds.includes(u.id)
+                        )
+                        .slice(0, 5)
+                        .map(u => (
+                          <div key={u.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:border-orange-500/30 transition-all">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-500 font-black text-xs">
+                                {u.name.charAt(0)}
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold text-white">{u.name}</p>
+                                <p className="text-[10px] text-slate-500">{u.email}</p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setSelectedUserIds([...selectedUserIds, u.id]);
+                                setPreviewUsers([...previewUsers, { id: u.id, full_name: u.name, email: u.email }]);
+                                setSearchUserQuery('');
+                              }}
+                              className="px-4 py-2 bg-orange-500/10 text-orange-500 rounded-lg text-[10px] font-black hover:bg-orange-500 text-white transition-all"
+                            >
+                              EKLE
+                            </button>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-8">
+                  {/* Matches List */}
+                  {!showIncomplete && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {previewUsers.map(u => (
+                        <div key={u.id} className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${selectedUserIds.includes(u.id) ? 'bg-orange-500/5 border-orange-500/30' : 'bg-[#0B1121] border-white/5 opacity-40'}`}>
+                          <div className="flex items-center gap-4">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm ${selectedUserIds.includes(u.id) ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'bg-slate-700 text-slate-400'}`}>
+                              {u.full_name?.charAt(0) || '?'}
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-white text-left">{u.full_name || 'İsimsiz'}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-[10px] text-slate-500 text-left">{u.email || '—'}</p>
+                                {u.sent && (
+                                  <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-500 text-[8px] font-black rounded uppercase animate-in zoom-in duration-300">
+                                    GÖNDERİLDİ
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (selectedUserIds.includes(u.id)) {
+                                setSelectedUserIds(selectedUserIds.filter(id => id !== u.id));
+                              } else {
+                                setSelectedUserIds([...selectedUserIds, u.id]);
+                              }
+                            }}
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${selectedUserIds.includes(u.id) ? 'bg-emerald-500/20 text-emerald-500' : 'bg-slate-800 text-slate-500'}`}
+                          >
+                            {selectedUserIds.includes(u.id) ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Incomplete Profiles List */}
+                  {showIncomplete && (
+                    <div className="space-y-4">
+                      <div className="bg-orange-500/5 border border-orange-500/10 p-4 rounded-2xl flex items-center gap-3">
+                        <AlertCircle className="w-5 h-5 text-orange-500" />
+                        <p className="text-[10px] text-orange-500 font-bold uppercase tracking-wider">Bu kişiler kriterlerinize yakın olabilir ancak profillerinde şehir/yaş gibi bilgiler eksik.</p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {incompleteUsers.map(u => (
+                          <div key={u.id} className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${selectedUserIds.includes(u.id) ? 'bg-orange-500/5 border-orange-500/30' : 'bg-[#0B1121] border-white/5 opacity-40'}`}>
+                            <div className="flex items-center gap-4">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm ${selectedUserIds.includes(u.id) ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'bg-slate-700 text-slate-400'}`}>
+                                {u.full_name?.charAt(0) || '?'}
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold text-white text-left">{u.full_name || 'İsimsiz'}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-[10px] text-red-500 text-left font-bold">Profil Bilgisi Eksik</p>
+                                  {u.sent && <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-500 text-[8px] font-black rounded uppercase">GÖNDERİLDİ</span>}
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                if (selectedUserIds.includes(u.id)) {
+                                  setSelectedUserIds(selectedUserIds.filter(id => id !== u.id));
+                                } else {
+                                  setSelectedUserIds([...selectedUserIds, u.id]);
+                                  // Add to previewUsers if not there for "Sent" status tracking
+                                  if (!previewUsers.find(pu => pu.id === u.id)) {
+                                     setPreviewUsers([...previewUsers, u]);
+                                  }
+                                }
+                              }}
+                              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${selectedUserIds.includes(u.id) ? 'bg-emerald-500/20 text-emerald-500' : 'bg-slate-800 text-slate-500'}`}
+                            >
+                              {selectedUserIds.includes(u.id) ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-8 border-t border-white/5 bg-white/5 flex gap-4">
+                <button
+                  onClick={() => setShowPreviewModal(false)}
+                  className="flex-1 py-4 bg-slate-800 text-slate-300 font-bold rounded-2xl hover:bg-slate-700 transition-all"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  onClick={() => handlePublish(true)}
+                  className="flex-[2] py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black rounded-2xl shadow-xl shadow-orange-500/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3"
+                >
+                  <Send className="w-5 h-5" />
+                  SEÇİLİ {selectedUserIds.length} KİŞİYE GÖNDER VE YAYIMLA
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* --- Rejection Reason Modal --- */}
+      {showRejectModal && (
+        <>
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-xl z-[200] animate-in fade-in duration-500" onClick={() => !rejectionLoading && setShowRejectModal(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-[210] p-6">
+            <div className="bg-[#131B2F] w-full max-w-xl rounded-[3.5rem] border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-500">
+              <div className="p-10 pb-6 text-center">
+                <div className="w-24 h-24 bg-red-500/10 rounded-[2.5rem] flex items-center justify-center border border-red-500/20 mx-auto mb-8 relative">
+                  <div className="absolute inset-0 bg-red-500/20 blur-2xl rounded-full animate-pulse"></div>
+                  <Ban className="w-12 h-12 text-red-500 relative z-10" />
+                </div>
+                <h3 className="text-4xl font-black text-white tracking-tighter mb-4">Müsait miyiz?</h3>
+                <p className="text-slate-500 font-bold text-sm px-4">
+                  Bu katılımı reddetmek üzeresiniz. Lütfen kullanıcıya yol göstermesi için bir <span className="text-red-400">red nedeni</span> belirtin.
+                </p>
+              </div>
+
+              <div className="px-10 py-6 space-y-6">
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-4">RED NEDENİ (ZORUNLU DEĞİL)</label>
+                  <textarea
+                    rows={4}
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="Örn: Geçersiz tamamlama kodu, Çok kısa süre, Yanlış cevaplar..."
+                    className="w-full bg-[#0B1121] border border-white/5 rounded-[2rem] px-8 py-6 text-white font-medium outline-none focus:border-red-500/50 transition-all resize-none shadow-inner"
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                   {['Geçersiz Kod', 'Hatalı Cevap', 'Spam / Bot', 'Çok Hızlı'].map(reason => (
+                     <button 
+                       key={reason}
+                       type="button"
+                       onClick={() => setRejectionReason(reason)}
+                       className="px-4 py-3 rounded-2xl bg-white/5 border border-white/5 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:border-red-500/30 hover:text-white transition-all"
+                     >
+                       {reason}
+                     </button>
+                   ))}
+                </div>
+              </div>
+
+              <div className="p-10 pt-6 flex gap-4">
+                <button
+                  disabled={rejectionLoading}
+                  onClick={() => setShowRejectModal(false)}
+                  className="flex-1 py-5 bg-slate-800 text-slate-300 font-black rounded-3xl hover:bg-slate-700 transition-all uppercase tracking-widest text-xs"
+                >
+                  VAZGEÇ
+                </button>
+                <button
+                  disabled={rejectionLoading}
+                  onClick={() => confirmSubmissionStatus(rejectionSubmissionId, 'rejected', rejectionReason)}
+                  className="flex-[2] py-5 bg-gradient-to-r from-red-600 to-rose-600 text-white font-black rounded-3xl shadow-xl shadow-red-500/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-xs"
+                >
+                  {rejectionLoading ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  ) : (
+                    <>
+                      REDDET VE BİLDİR <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
+
