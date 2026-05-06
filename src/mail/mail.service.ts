@@ -8,10 +8,19 @@ export class MailService {
 
   constructor(private configService: ConfigService) {
     const apiKey = this.configService.get<string>('RESEND_API_KEY');
-    this.resend = new Resend(apiKey);
+    if (apiKey) {
+      this.resend = new Resend(apiKey);
+    } else {
+      console.warn('RESEND_API_KEY is missing. Mail functionality will be disabled.');
+      this.resend = null;
+    }
   }
 
   async sendEmail(to: string, subject: string, content: string) {
+    if (!this.resend) {
+      console.error('Cannot send email: Resend API key is not configured.');
+      return null;
+    }
     try {
       const response = await this.resend.emails.send({
         from: 'PolTem Akademi <info@poltemakademi.com>',
