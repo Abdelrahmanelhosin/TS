@@ -657,14 +657,21 @@ export class SurveysService {
     }
 
     async getSubmissions(surveyId: string) {
-        await this.findOne(surveyId);
+        // Lightweight check instead of full findOne
+        const surveyExists = await this.prisma.surveys.findUnique({
+            where: { id: surveyId },
+            select: { id: true }
+        });
+        if (!surveyExists) throw new NotFoundException('Survey not found');
+
         const subs = await this.prisma.$queryRawUnsafe<any[]>(`
             SELECT 
-                sub.*, sub.status::text as status,
+                sub.id, sub.user_id, sub.survey_id, sub.status::text as status,
+                sub.updated_at, sub.metadata, sub.created_at, sub.reject_reason,
                 u.email,
                 p.full_name, p.phone, p.tc_identity_number, p.bank_name::text as bank_name, p.iban, p.full_name_bank
             FROM public.submissions sub
-            JOIN auth.users u ON sub.user_id = u.id
+            INNER JOIN auth.users u ON sub.user_id = u.id
             LEFT JOIN public.profiles p ON sub.user_id = p.id
             WHERE sub.survey_id = $1::uuid
             ORDER BY sub.updated_at DESC
@@ -796,13 +803,13 @@ export class SurveysService {
     }
 
     async getPaymentTable(surveyId: string) {
-        const surveys = await this.prisma.$queryRawUnsafe<any[]>(`
-            SELECT id, title, reward_amount::text as reward_amount, total_cost::text as total_cost
-            FROM public.surveys WHERE id = $1::uuid
-        `, surveyId);
+        const surveys = await this.prisma.surveys.findUnique({
+            where: { id: surveyId },
+            select: { id: true, title: true, reward_amount: true, total_cost: true }
+        });
 
-        if (!surveys || surveys.length === 0) throw new NotFoundException('Survey not found');
-        const survey = surveys[0];
+        if (!surveys) throw new NotFoundException('Survey not found');
+        const survey = surveys;
 
         const subs = await this.prisma.$queryRawUnsafe<any[]>(`
             SELECT 
