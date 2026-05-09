@@ -226,7 +226,7 @@ function LoginPage({ onLogin }) {
       });
       const data = await response.json();
       if (response.ok) {
-        localStorage.setItem('token', data.access_token);
+        sessionStorage.setItem('token', data.access_token);
         onLogin(data.access_token);
       } else {
         setError(data.message || 'Giriş yapılamadı.');
@@ -442,7 +442,7 @@ const RECENT_ACTIVITIES = [
 ];
 
 export default function AdminDashboard() {
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(sessionStorage.getItem('token'));
   const [activeView, setActiveView] = useState('overview');
   const [surveyFilter, setSurveyFilter] = useState('all'); // all, pending, active, completed, rejected
   const [validationRules, setValidationRules] = useState([]);
@@ -458,6 +458,7 @@ export default function AdminDashboard() {
   const usersPerPage = 20;
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
   const [error, setError] = useState('');
 
   const [selectedUser, setSelectedUser] = useState(null);
@@ -529,7 +530,6 @@ export default function AdminDashboard() {
   const [editUserMarital, setEditUserMarital] = useState('');
   const [editUserChildren, setEditUserChildren] = useState('');
   const [editUserTC, setEditUserTC] = useState('');
-  const [editUserBank, setEditUserBank] = useState('');
   const [editUserIBAN, setEditUserIBAN] = useState('');
 
   // Mail Sending State
@@ -567,7 +567,7 @@ export default function AdminDashboard() {
   const [rejectionLoading, setRejectionLoading] = useState(false);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
     setToken(null);
   };
 
@@ -676,17 +676,23 @@ export default function AdminDashboard() {
 
   const fetchSurveyDetails = async (surveyId, forceUpdateSelected = false) => {
     try {
+      setPaymentLoading(true);
+      // Clear previous payment table to ensure fresh data display
+      if (selectedSurvey?.id === surveyId) {
+        setSelectedSurvey(prev => ({ ...prev, paymentTable: { rows: [] } }));
+      }
+      
       const headers = { 'Authorization': `Bearer ${token}` };
       const [res, pRes, payRes] = await Promise.all([
         fetch(`${API_BASE_URL}/surveys/${surveyId}`, { headers }),
         fetch(`${API_BASE_URL}/admin/surveys/${surveyId}/participants`, { headers }),
         fetch(`${API_BASE_URL}/admin/surveys/${surveyId}/payment-table`, { headers })
       ]);
-
+ 
       const data = await res.json();
       const pData = await pRes.json().catch(() => []);
       const payData = await payRes.json().catch(() => []);
-
+ 
       const enriched = {
         ...data,
         participants: Array.isArray(pData) ? pData : (Array.isArray(data.participants) ? data.participants : []),
@@ -700,6 +706,8 @@ export default function AdminDashboard() {
       }
     } catch (err) {
       console.error('Survey Details Error:', err);
+    } finally {
+      setPaymentLoading(false);
     }
   };
 
@@ -825,7 +833,6 @@ export default function AdminDashboard() {
       setEditUserIncome(normalizeSingle(selectedUser.profile?.household_income, INCOME_OPTIONS));
       setEditUserMarital(normalizeSingle(selectedUser.profile?.marital_status, MARITAL_OPTIONS));
       setEditUserChildren(normalizeSingle(selectedUser.profile?.children_count, CHILDREN_OPTIONS));
-      setEditUserBank(selectedUser.profile?.bank_name || '');
       setEditUserIBAN(selectedUser.profile?.iban || '');
       setEditUserTC(selectedUser.profile?.tc_identity_number || '');
     }
@@ -880,7 +887,6 @@ export default function AdminDashboard() {
           marital_status: editUserMarital === 'Hepsi' ? 'hepsi' : editUserMarital,
           children_count: editUserChildren === 'Hepsi' ? 'hepsi' : editUserChildren,
           tc_identity_number: editUserTC,
-          bank_name: editUserBank,
           iban: editUserIBAN
         })
       });
@@ -888,7 +894,6 @@ export default function AdminDashboard() {
         alert('Kullanıcı profili güncellendi.');
         // Re-initialize TC/Bank/IBAN fields after successful update
         setEditUserIBAN(selectedUser.profile?.iban || '');
-        setEditUserBank(selectedUser.profile?.bank_name || '');
         setEditUserTC(selectedUser.profile?.tc_identity_number || '');
         setIsEditingUser(false);
         fetchData();
@@ -1298,7 +1303,7 @@ export default function AdminDashboard() {
             <p className="text-slate-500 font-bold">Bu kategoride herhangi bir araştırma bulunamadı.</p>
           </div>
         ) : (
-          surveys.filter(s => galleryFilter === 'all' || s.status === galleryFilter).map((s) => (
+          surveys.filter(s => galleryFilter === 'all' || s.status === galleryFilter || (galleryFilter === 'pending' && s.status === 'bekliyor') || (galleryFilter === 'approved' && s.status === 'onaylandı')).map((s) => (
             <div
               key={s.id}
               onClick={() => { setSelectedSurvey(s); fetchSurveyDetails(s.id, true); }}
@@ -1495,15 +1500,13 @@ export default function AdminDashboard() {
     if (!rows || rows.length === 0) return alert('Dışa aktarılacak veri bulunamadı.');
 
     // CSV formatı (Excel uyumlu utf-8 bom ile)
-    const headers = ['Ad Soyad', 'Email', 'TC No', 'Banka', 'Hesap Sahibi', 'IBAN', 'Tutar (TL)'];
+    const headers = ['Ad Soyad', 'Email', 'TC No', 'IBAN', 'Tutar (TL)'];
     const csvContent = [
       headers.join(','),
       ...rows.map(r => [
         `"${r.full_name}"`,
         `"${r.email}"`,
         `"${r.tc_identity_number}"`,
-        `"${r.bank_name}"`,
-        `"${r.full_name_bank}"`,
         `"${r.iban}"`,
         r.reward_amount
       ].join(','))
@@ -2339,8 +2342,8 @@ export default function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#1A233A]">
-                      {[...surveys, ...requests]
-                        .filter(s => surveyFilter === 'all' || s.status === surveyFilter || (surveyFilter === 'rejected' && s.status === 'paused'))
+                      {Array.from(new Map([...surveys, ...requests].map(item => [item.id, item])).values())
+                        .filter(s => surveyFilter === 'all' || s.status === surveyFilter || (surveyFilter === 'rejected' && (s.status === 'paused' || s.status === 'rejected')) || (surveyFilter === 'pending' && s.status === 'bekliyor') || (surveyFilter === 'active' && s.status === 'onaylandı'))
                         .map(s => (
                           <tr key={s.id} className="hover:bg-[#1A233A]/50 transition-colors cursor-pointer group" onClick={() => {
                             if (s.status === 'pending') {
@@ -2518,7 +2521,7 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="bg-[#0B1121] border border-[#1A233A] rounded-[2rem] p-8 space-y-4 shadow-inner text-left">
-                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">Profil ve Banka Bilgileri</h4>
+                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">Profil Bilgileri</h4>
 
                     <div className="space-y-4">
                       <div className="flex justify-between items-center border-b border-[#1A233A] pb-4">
@@ -3362,7 +3365,12 @@ export default function AdminDashboard() {
 
               {detailTab === 'payment' && (
                 <div className="animate-in fade-in-50 slide-in-from-bottom-2 duration-500">
-                  {(!selectedSurvey.paymentTable || selectedSurvey.paymentTable.rows?.length === 0) ? (
+                  {paymentLoading ? (
+                    <div className="bg-[#131B2F] border border-[#1A233A] rounded-[2.5rem] p-20 text-center shadow-2xl">
+                       <div className="w-12 h-12 border-4 border-orange-500/30 border-t-orange-500 rounded-full animate-spin mx-auto mb-6"></div>
+                       <p className="text-slate-400 font-black uppercase tracking-widest">Ödeme Tablosu Yükleniyor...</p>
+                    </div>
+                  ) : (!selectedSurvey.paymentTable || selectedSurvey.paymentTable.rows?.length === 0) ? (
                     <div className="bg-[#131B2F] border border-[#1A233A] rounded-[2.5rem] p-20 text-center shadow-2xl">
                       <WalletCards className="w-20 h-20 text-slate-700 mx-auto mb-6 opacity-20" />
                       <h4 className="text-xl font-black text-slate-400 uppercase tracking-widest mb-4">Henüz Onaylanmış Katılımcı Yok</h4>
@@ -3390,8 +3398,6 @@ export default function AdminDashboard() {
                             <tr>
                               <th className="px-6 py-5 first:rounded-l-2xl">Ad Soyad</th>
                               <th className="px-6 py-5">TC No</th>
-                              <th className="px-6 py-5">Banka</th>
-                              <th className="px-6 py-5">Hesap Sahibi</th>
                               <th className="px-6 py-5">IBAN</th>
                               <th className="px-6 py-5 text-right last:rounded-r-2xl">Tutar</th>
                             </tr>
@@ -3409,8 +3415,6 @@ export default function AdminDashboard() {
                                   <div className="text-slate-500 text-[9px] font-black">{row.email}</div>
                                 </td>
                                 <td className="px-6 py-6 font-mono text-slate-400 text-xs font-black">{row.tc_identity_number}</td>
-                                <td className="px-6 py-6 text-slate-300 text-[11px] font-black">{row.bank_name}</td>
-                                <td className="px-6 py-6 text-slate-300 text-[11px] font-black">{row.full_name_bank}</td>
                                 <td className="px-6 py-6">
                                   <div className={`text-emerald-500 font-mono text-[11px] font-black group-hover:scale-105 transition-transform origin-left ${row.is_shadow ? 'opacity-20' : ''}`}>{row.iban}</div>
                                 </td>

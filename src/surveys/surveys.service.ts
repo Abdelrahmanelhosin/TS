@@ -420,174 +420,182 @@ export class SurveysService {
         });
     }
 
-    async approve(id: string, updateData?: any) {
-        await this.findOne(id);
+    private normalizeFilters(val: any) {
+        if (!val) return undefined;
 
-        const data: any = { status: 'active' };
+        const normalize = (v: any): string => {
+            if (typeof v !== 'string') return v;
+            const s = v.trim();
+            // Fix for Turkish 'İ' which becomes 'i\u0307' in standard toLowerCase()
+            let lower = s.replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase();
+            lower = lower.replace(/\u0307/g, ''); // strip out combining dots just in case
 
-        // Basic fields
-        if (updateData?.reward_amount !== undefined) data.reward_amount = updateData.reward_amount;
-        if (updateData?.estimated_time !== undefined) data.estimated_time = updateData.estimated_time;
-        if (updateData?.title) data.title = updateData.title;
-        if (updateData?.description) data.description = updateData.description;
-        if (updateData?.survey_link) data.survey_link = updateData.survey_link;
-        if (updateData?.platform) data.platform = updateData.platform;
-        if (updateData?.total_cost !== undefined) data.total_cost = updateData.total_cost;
-        if (updateData?.target_audience !== undefined) data.target_audience = updateData.target_audience;
+            // Gender
+            if (lower === 'erkek') return 'erkek';
+            if (lower === 'kadın' || lower === 'kadin') return 'kadin';
 
-        // Parse demographic fields gracefully strings -> arrays
-        // "hepsi" means "all" = no filter, so we store an empty array
-        const toArray = (val: any) => {
-            if (!val) return undefined;
+            // Age group
+            if (s === '18-24') return 'V18_24';
+            if (s === '25-34') return 'V25_34';
+            if (s === '35-44') return 'V35_44';
+            if (s === '45-54') return 'V45_54';
+            if (s === '55+') return 'ustu';
 
-            const normalize = (v: any): string => {
-                if (typeof v !== 'string') return v;
-                const s = v.trim();
-                // Fix for Turkish 'İ' which becomes 'i\u0307' in standard toLowerCase()
-                let lower = s.replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase();
-                lower = lower.replace(/\u0307/g, ''); // strip out combining dots just in case
+            // Education
+            if (s === 'İlkokul' || lower === 'ilkokul') return 'ilkokul';
+            if (s === 'Ortaokul' || lower === 'ortaokul') return 'ortaokul';
+            if (s === 'Lise' || lower === 'lise') return 'lise';
+            if (s === 'Önlisans' || lower === 'onlisans' || lower === 'önlisans') return 'onlisans';
+            if (s === 'Lisans' || lower === 'lisans') return 'lisans';
+            if (s === 'Yüksek Lisans' || lower === 'yüksek lisans' || lower === 'yuksek lisans') return 'yuksek_lisans';
+            if (s === 'Doktora' || lower === 'doktora') return 'doktora';
 
-                // Gender
-                if (lower === 'erkek') return 'erkek';
-                if (lower === 'kadın' || lower === 'kadin') return 'kadin';
+            // Marital Status
+            if (s === 'Evli' || lower === 'evli') return 'evli';
+            if (s === 'Bekar' || lower === 'bekar') return 'bekar';
+            if (lower.includes('istemiyor')) return 'belirtmek_istemiyor';
 
-                // Age group
-                if (s === '18-24') return 'V18_24';
-                if (s === '25-34') return 'V25_34';
-                if (s === '35-44') return 'V35_44';
-                if (s === '45-54') return 'V45_54';
-                if (s === '55+') return 'ustu';
+            // Work Status
+            if (s === 'Çalışıyor' || lower === 'çalışıyor' || lower === 'calisiyor') return 'calisiyor';
+            if (s === 'Çalışmıyor' || lower === 'çalışmıyor' || lower === 'calismiyor') return 'calismiyor';
+            if (s === 'Öğrenci' || lower === 'öğrenci' || lower === 'ogrenci') return 'ogrenci';
+            if (s === 'Emekli' || lower === 'emekli') return 'emekli';
+            if (lower.includes('hanımı') || lower.includes('hanimi')) return 'ev_hanimi';
 
-                // Education
-                if (s === 'İlkokul' || lower === 'ilkokul') return 'ilkokul';
-                if (s === 'Ortaokul' || lower === 'ortaokul') return 'ortaokul';
-                if (s === 'Lise' || lower === 'lise') return 'lise';
-                if (s === 'Önlisans' || lower === 'onlisans' || lower === 'önlisans') return 'onlisans';
-                if (s === 'Lisans' || lower === 'lisans') return 'lisans';
-                if (s === 'Yüksek Lisans' || lower === 'yüksek lisans' || lower === 'yuksek lisans') return 'yuksek_lisans';
-                if (s === 'Doktora' || lower === 'doktora') return 'doktora';
-
-                // Marital Status
-                if (s === 'Evli' || lower === 'evli') return 'evli';
-                if (s === 'Bekar' || lower === 'bekar') return 'bekar';
-                if (lower.includes('istemiyor')) return 'belirtmek_istemiyor';
-
-                // Work Status
-                if (s === 'Çalışıyor' || lower === 'çalışıyor' || lower === 'calisiyor') return 'calisiyor';
-                if (s === 'Çalışmıyor' || lower === 'çalışmıyor' || lower === 'calismiyor') return 'calismiyor';
-                if (s === 'Öğrenci' || lower === 'öğrenci' || lower === 'ogrenci') return 'ogrenci';
-                if (s === 'Emekli' || lower === 'emekli') return 'emekli';
-                if (lower.includes('hanımı') || lower.includes('hanimi')) return 'ev_hanimi';
-
-                // Income (maps to income_enum)
-                if (s.includes('0 - 40.000')) return 'I0_40000';
-                if (s.includes('40.001 - 80.000')) return 'I40001_80000';
-                if (s.includes('80.001 - 120.000')) return 'I80001_120000';
-                if (s.includes('120.001 - 160.000')) return 'I120001_160000';
-                if (lower.includes('160.001') && lower.includes('üzeri')) return 'uzeri';
+            // Income (maps to income_enum)
+            if (s.includes('0 - 40.000')) return 'I0_40000';
+            if (s.includes('40.001 - 80.000')) return 'I40001_80000';
+            if (s.includes('80.001 - 120.000')) return 'I80001_120000';
+            if (s.includes('120.001 - 160.000')) return 'I120001_160000';
+            if (lower.includes('160.001') && lower.includes('üzeri')) return 'uzeri';
 
 
-                // Child count
-                if (s === '0') return 'C0';
-                if (s === '1') return 'C1';
-                if (s === '2') return 'C2';
-                if (s === '3') return 'C3';
-                if (s === '4') return 'C4';
-                if (s === '5+') return 'C5_plus';
+            // Child count
+            if (s === '0') return 'C0';
+            if (s === '1') return 'C1';
+            if (s === '2') return 'C2';
+            if (s === '3') return 'C3';
+            if (s === '4') return 'C4';
+            if (s === '5+') return 'C5_plus';
 
-                // Position (MUST come before Sector - "Girişimci / İşletme Sahibi" contains "işletme sahibi" too)
-                if (lower.includes('girişimci') || lower.includes('girisimci')) return 'girisimci_isletme_sahibi';
-                if (lower.includes('üst düzey') || lower.includes('ust duzey')) return 'ust_duzey_yonetici';
-                if (lower.includes('orta düzey') || lower.includes('orta duzey')) return 'orta_duzey_yonetici';
-                if (lower.includes('takım lideri') || lower.includes('takim lideri')) return 'alt_duzey_yonetici_takim_lideri';
-                if (lower === 'çalışan' || lower === 'calisan') return 'calisan';
+            // Position (MUST come before Sector - "Girişimci / İşletme Sahibi" contains "işletme sahibi" too)
+            if (lower.includes('girişimci') || lower.includes('girisimci')) return 'girisimci_isletme_sahibi';
+            if (lower.includes('üst düzey') || lower.includes('ust duzey')) return 'ust_duzey_yonetici';
+            if (lower.includes('orta düzey') || lower.includes('orta duzey')) return 'orta_duzey_yonetici';
+            if (lower.includes('takım lideri') || lower.includes('takim lideri')) return 'alt_duzey_yonetici_takim_lideri';
+            if (lower === 'çalışan' || lower === 'calisan') return 'calisan';
 
-                // Sector (after Position to avoid collision with "Girişimci / İşletme Sahibi")
-                if (lower.includes('özel sektör') || lower.includes('ozel sektor')) return 'ozel_sektor';
-                if (lower.includes('kamu sektörü') || lower.includes('kamu sektoru')) return 'kamu_sektoru';
-                if ((lower.includes('işletme sahibi') || lower.includes('isletme sahibi')) && (lower.includes('esnaf') || lower.includes('zanaatk') || lower.includes('kendi'))) return 'isletme_sahibi_esnaf_zanaatkar_kendi_isi';
+            // Sector (after Position to avoid collision with "Girişimci / İşletme Sahibi")
+            if (lower.includes('özel sektör') || lower.includes('ozel sektor')) return 'ozel_sektor';
+            if (lower.includes('kamu sektörü') || lower.includes('kamu sektoru')) return 'kamu_sektoru';
+            if ((lower.includes('işletme sahibi') || lower.includes('isletme sahibi')) && (lower.includes('esnaf') || lower.includes('zanaatk') || lower.includes('kendi'))) return 'isletme_sahibi_esnaf_zanaatkar_kendi_isi';
 
-                // Occupation
-                if (s === 'Akademisyen') return 'akademisyen';
-                if (s === 'Öğretmen') return 'ogretmen';
-                if (s === 'Doktor') return 'doktor';
-                if (s === 'Diş Hekimi') return 'dis_hekimi';
-                if (s === 'Hemşire') return 'hemsire';
-                if (s === 'Eczacı') return 'eczaci';
-                if (s === 'Psikolog') return 'psikolog';
-                if (s === 'Avukat') return 'avukat';
-                if (s === 'Hakim') return 'hakim';
-                if (s === 'Polis') return 'polis';
-                if (s === 'Asker') return 'asker';
-                if (s === 'Mühendis') return 'muhendis';
-                if (s === 'Mimar') return 'mimar';
-                if (s.includes('Muhasebeci')) return 'muhasebeci_mali_musavir';
-                if (s.includes('Yazılımcı')) return 'yazilimci_bilisim_uzmani';
-                if (s.includes('Bankacılık')) return 'bankacilik_finans_uzmani';
-                if (s.includes('İnsan Kaynakları')) return 'insan_kaynaklari_uzmani';
-                if (s.includes('Satış')) return 'satis_pazarlama_halkla_iliskiler';
-                if (s.includes('Teknisyen')) return 'teknisyen_tekniker_tasarimci';
-                if (s === 'Serbest Meslek') return 'serbest_meslek';
-                if (s === 'Esnaf') return 'esnaf';
-                if (s === 'Çiftçi') return 'ciftci';
-                if (s === 'İşçi') return 'isci';
-                if (s === 'Diğer') return 'diger';
+            // Occupation
+            if (lower === 'akademisyen') return 'akademisyen';
+            if (lower === 'öğretmen' || lower === 'ogretmen') return 'ogretmen';
+            if (lower === 'doktor') return 'doktor';
+            if (lower === 'diş hekimi' || lower === 'dis hekimi') return 'dis_hekimi';
+            if (lower === 'hemşire' || lower === 'hemsire') return 'hemsire';
+            if (lower === 'eczacı' || lower === 'eczaci') return 'eczaci';
+            if (lower === 'psikolog') return 'psikolog';
+            if (lower === 'avukat') return 'avukat';
+            if (lower === 'hakim') return 'hakim';
+            if (lower === 'polis') return 'polis';
+            if (lower === 'asker') return 'asker';
+            if (lower === 'mühendis' || lower === 'muhendis') return 'muhendis';
+            if (lower === 'mimar') return 'mimar';
+            if (lower.includes('muhasebeci')) return 'muhasebeci_mali_musavir';
+            if (lower.includes('yazılımcı') || lower.includes('yazilimci')) return 'yazilimci_bilisim_uzmani';
+            if (lower.includes('bankacılık') || lower.includes('bankacilik')) return 'bankacilik_finans_uzmani';
+            if (lower.includes('insan kaynakları') || lower.includes('insan kaynaklari')) return 'insan_kaynaklari_uzmani';
+            if (lower.includes('satış') || lower.includes('satis')) return 'satis_pazarlama_halkla_iliskiler';
+            if (lower.includes('teknisyen')) return 'teknisyen_tekniker_tasarimci';
+            if (lower === 'serbest meslek') return 'serbest_meslek';
+            if (lower === 'esnaf') return 'esnaf';
+            if (lower === 'çiftçi' || lower === 'ciftci') return 'ciftci';
+            if (lower === 'işçi' || lower === 'isci') return 'isci';
+            if (lower === 'diğer' || lower === 'diger') return 'diger';
 
-                // Nationality
-                if (s === 'T.C.' || lower === 'tc' || lower === 't.c.') return 'T_R';
-                if (lower === 'diğer' || lower === 'diger') return 'Diger';
+            // Nationality
+            if (s === 'T.C.' || lower === 'tc' || lower === 't.c.') return 'T_R';
+            if (lower === 'diğer' || lower === 'diger') return 'Diger';
 
-                // Fallback for cities and others: normalize Turkish characters
-                let normalized = lower.replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c');
+            // Fallback for cities and others: normalize Turkish characters
+            let normalized = lower.replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c');
 
-                // Strip any remaining spaces or non-word chars if it's supposed to be an enum (like cities)
-                // Actually, enum keys like 'kahramanmaras' don't have spaces.
-                return normalized;
-            };
-
-            if (Array.isArray(val)) {
-                // Filter out 'hepsi' - it means "all" so we use empty array
-                const filtered = val
-                    .map(v => normalize(v))
-                    .filter((v: string) => v !== 'hepsi');
-                return filtered.length === 0 ? [] : filtered;
-            }
-            if (typeof val === 'string') {
-                const s = normalize(val);
-                if (s === 'hepsi') return [];
-                return [s];
-            }
-            return undefined;
+            // Strip any remaining spaces or non-word chars if it's supposed to be an enum (like cities)
+            // Actually, enum keys like 'kahramanmaras' don't have spaces.
+            return normalized;
         };
 
-        if (updateData?.target_gender) data.target_gender = toArray(updateData.target_gender);
-        if (updateData?.target_age_group) data.target_age_group = toArray(updateData.target_age_group);
-        if (updateData?.target_city) data.target_city = toArray(updateData.target_city);
-        if (updateData?.target_education) data.target_education = toArray(updateData.target_education);
-        if (updateData?.target_occupation) data.target_occupation = toArray(updateData.target_occupation);
-        if (updateData?.target_sector) data.target_sector = toArray(updateData.target_sector);
-        if (updateData?.target_position) data.target_position = toArray(updateData.target_position);
-        if (updateData?.target_income) data.target_income = toArray(updateData.target_income);
-        if (updateData?.target_nationality) data.target_nationality = toArray(updateData.target_nationality);
+        if (Array.isArray(val)) {
+            // Filter out 'hepsi' - it means "all" so we use empty array
+            const filtered = val
+                .map(v => normalize(v))
+                .filter((v: string) => v !== 'hepsi');
+            return filtered.length === 0 ? [] : filtered;
+        }
+        if (typeof val === 'string') {
+            const s = normalize(val);
+            if (s === 'hepsi') return [];
+            return [s];
+        }
+        return undefined;
+    }
 
-        // Handle both old and new frontend field names
-        const workStatus = updateData?.target_employment_status || updateData?.target_work_status;
-        if (workStatus) data.target_employment_status = toArray(workStatus);
+    async approve(id: string, updateData?: any) {
+        try {
+            await this.findOne(id);
 
-        const maritalStatus = updateData?.target_marital_status || updateData?.target_marital;
-        if (maritalStatus) data.target_marital_status = toArray(maritalStatus);
+            const data: any = { status: 'active' };
 
-        const childCount = updateData?.target_child_count || updateData?.target_children;
-        if (childCount) data.target_child_count = toArray(childCount);
+            // Basic fields
+            if (updateData?.reward_amount !== undefined) data.reward_amount = updateData.reward_amount;
+            if (updateData?.estimated_time !== undefined) data.estimated_time = updateData.estimated_time;
+            if (updateData?.title) data.title = updateData.title;
+            if (updateData?.description) data.description = updateData.description;
+            if (updateData?.survey_link) data.survey_link = updateData.survey_link;
+            if (updateData?.platform) data.platform = updateData.platform;
+            if (updateData?.total_cost !== undefined) data.total_cost = updateData.total_cost;
+            if (updateData?.target_audience !== undefined) data.target_audience = updateData.target_audience;
 
-        const result = await this.prisma.surveys.update({
-            where: { id },
-            data,
-        });
+            const toArray = (val: any) => this.normalizeFilters(val);
 
-        this.notifyMatchingUsers(id, updateData?.selectedUserIds).catch(err => console.error(err));
+            if (updateData?.target_gender) data.target_gender = toArray(updateData.target_gender);
+            if (updateData?.target_age_group) data.target_age_group = toArray(updateData.target_age_group);
+            if (updateData?.target_city) data.target_city = toArray(updateData.target_city);
+            if (updateData?.target_education) data.target_education = toArray(updateData.target_education);
+            if (updateData?.target_occupation) data.target_occupation = toArray(updateData.target_occupation);
+            if (updateData?.target_sector) data.target_sector = toArray(updateData.target_sector);
+            if (updateData?.target_position) data.target_position = toArray(updateData.target_position);
+            if (updateData?.target_income) data.target_income = toArray(updateData.target_income);
+            if (updateData?.target_nationality) data.target_nationality = toArray(updateData.target_nationality);
 
-        return result;
+            // Handle both old and new frontend field names
+            const workStatus = updateData?.target_employment_status || updateData?.target_work_status;
+            if (workStatus) data.target_employment_status = toArray(workStatus);
+
+            const maritalStatus = updateData?.target_marital_status || updateData?.target_marital;
+            if (maritalStatus) data.target_marital_status = toArray(maritalStatus);
+
+            const childCount = updateData?.target_child_count || updateData?.target_children;
+            if (childCount) data.target_child_count = toArray(childCount);
+
+            console.log('[Approve] Updating survey with data:', JSON.stringify(data, null, 2));
+
+            const result = await this.prisma.surveys.update({
+                where: { id },
+                data,
+            });
+
+            console.log('[Approve] Update successful, notifying users...');
+            this.notifyMatchingUsers(id, updateData?.selectedUserIds).catch(err => console.error('[Approve] Notification error:', err));
+
+            return result;
+        } catch (error) {
+            console.error('[Approve] Error occurred:', error);
+            throw error;
+        }
     }
 
     async reject(id: string) {
@@ -669,7 +677,7 @@ export class SurveysService {
                 sub.id, sub.user_id, sub.survey_id, sub.status::text as status,
                 sub.updated_at, sub.metadata, sub.created_at, sub.reject_reason,
                 u.email,
-                p.full_name, p.phone, p.tc_identity_number, p.bank_name::text as bank_name, p.iban, p.full_name_bank
+                p.full_name, p.phone, p.tc_identity_number, p.iban
             FROM public.submissions sub
             INNER JOIN auth.users u ON sub.user_id = u.id
             LEFT JOIN public.profiles p ON sub.user_id = p.id
@@ -685,9 +693,7 @@ export class SurveysService {
                     full_name: s.full_name,
                     phone: s.phone,
                     tc_identity_number: s.tc_identity_number,
-                    bank_name: s.bank_name,
-                    iban: s.iban,
-                    full_name_bank: s.full_name_bank
+                    iban: s.iban
                 }
             }
         }));
@@ -816,7 +822,7 @@ export class SurveysService {
                 sub.*, sub.status::text as status,
                 sub.payement_status::text as "paymentStatus",
                 u.email,
-                p.full_name, p.tc_identity_number, p.bank_name::text as bank_name, p.iban, p.full_name_bank, p.role::text as role
+                p.full_name, p.tc_identity_number, p.iban, p.role::text as role
             FROM public.submissions sub
             LEFT JOIN auth.users u ON sub.user_id = u.id
             LEFT JOIN public.profiles p ON sub.user_id = p.id
@@ -832,11 +838,9 @@ export class SurveysService {
                 const participantCode = metadata.unique_id || '';
 
                 return {
-                    full_name: isShadow ? `Guest (Code: ${participantCode})` : (s.full_name || s.full_name_bank || s.email || '—'),
+                    full_name: isShadow ? `Guest (Code: ${participantCode})` : (s.full_name || s.email || '—'),
                     tc_identity_number: isShadow ? '—' : (s.tc_identity_number || '—'),
-                    bank_name: isShadow ? '—' : (s.bank_name || '—'),
                     iban: isShadow ? '—' : (s.iban || '—'),
-                    full_name_bank: isShadow ? '—' : (s.full_name_bank || '—'),
                     email: isShadow ? '—' : (s.email || '—'),
                     reward_amount: survey.reward_amount,
                     is_shadow: isShadow,
@@ -1067,7 +1071,21 @@ export class SurveysService {
 
         // Apply overrides if provided (for live preview in admin dashboard)
         if (overrides) {
-            survey = { ...survey, ...overrides };
+            survey = { 
+                ...survey, 
+                ...overrides,
+                target_gender: overrides.target_gender ? this.normalizeFilters(overrides.target_gender) : survey.target_gender,
+                target_age_group: overrides.target_age_group ? this.normalizeFilters(overrides.target_age_group) : survey.target_age_group,
+                target_city: overrides.target_city ? this.normalizeFilters(overrides.target_city) : survey.target_city,
+                target_education: overrides.target_education ? this.normalizeFilters(overrides.target_education) : survey.target_education,
+                target_occupation: overrides.target_occupation ? this.normalizeFilters(overrides.target_occupation) : survey.target_occupation,
+                target_employment_status: overrides.target_employment_status ? this.normalizeFilters(overrides.target_employment_status) : survey.target_employment_status,
+                target_sector: overrides.target_sector ? this.normalizeFilters(overrides.target_sector) : survey.target_sector,
+                target_position: overrides.target_position ? this.normalizeFilters(overrides.target_position) : survey.target_position,
+                target_income: overrides.target_income ? this.normalizeFilters(overrides.target_income) : survey.target_income,
+                target_marital_status: overrides.target_marital_status ? this.normalizeFilters(overrides.target_marital_status) : survey.target_marital_status,
+                target_child_count: overrides.target_child_count ? this.normalizeFilters(overrides.target_child_count) : survey.target_child_count
+            };
         }
 
         const profiles = await this.prisma.profiles.findMany({
@@ -1085,7 +1103,8 @@ export class SurveysService {
             const checkFilter = (userVal: any, filterArr: any[]) => {
                 if (!filterArr || filterArr.length === 0 || filterArr.includes('hepsi')) return 'match';
                 if (!userVal) return 'missing';
-                return filterArr.includes(userVal.toLowerCase()) ? 'match' : 'no_match';
+                const lowerUserVal = String(userVal).toLowerCase();
+                return filterArr.map(v => String(v).toLowerCase()).includes(lowerUserVal) ? 'match' : 'no_match';
             };
 
             const checks = [
@@ -1139,10 +1158,18 @@ export class SurveysService {
                 missing_info: isMissingData
             };
 
-            if (isMatch) matches.push(userData);
-            else if (isMissingData) incomplete.push(userData);
+            if (isMatch) {
+                console.log(`[Matching] Match found: ${p.full_name} (${p.id})`);
+                matches.push(userData);
+            } else if (isMissingData) {
+                console.log(`[Matching] Incomplete data for: ${p.full_name} (${p.id}) - Checks: ${checks}`);
+                incomplete.push(userData);
+            } else {
+                console.log(`[Matching] No match for: ${p.full_name} (${p.id}) - Checks: ${checks}`);
+            }
         }
 
+        console.log(`[Matching] Final results - Matches: ${matches.length}, Incomplete: ${incomplete.length}`);
         return { matches, incomplete };
     }
 

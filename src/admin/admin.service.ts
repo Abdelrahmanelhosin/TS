@@ -25,7 +25,7 @@ export class AdminService {
 
         const users = await this.prisma.$queryRawUnsafe<any[]>(`
             SELECT 
-                p.id, p.full_name, p.phone, p.iban, p.full_name_bank, p.tc_identity_number,
+                p.id, p.full_name, p.phone, p.iban, p.tc_identity_number,
                 p.balance::text as balance,
                 p.created_at, p.updated_at, p.birth_date, p.video_conference_optin, p.email_verified,
                 p.education_level::text as education_level,
@@ -35,7 +35,6 @@ export class AdminService {
                 p.sector_type::text as sector_type,
                 p.work_status::text as work_status,
                 p.role::text as role,
-                p.bank_name::text as bank_name,
                 p.occupation::text as occupation,
                 p.city::text as city,
                 p.gender::text as gender,
@@ -66,7 +65,7 @@ export class AdminService {
     async getUserDetails(id: string) {
         const profiles = await this.prisma.$queryRawUnsafe<any[]>(`
             SELECT 
-                p.id, p.full_name, p.phone, p.iban, p.full_name_bank, p.tc_identity_number,
+                p.id, p.full_name, p.phone, p.iban, p.tc_identity_number,
                 p.balance::text as balance,
                 p.created_at, p.updated_at, p.birth_date, p.video_conference_optin, p.email_verified,
                 p.education_level::text as education_level,
@@ -76,7 +75,6 @@ export class AdminService {
                 p.sector_type::text as sector_type,
                 p.work_status::text as work_status,
                 p.role::text as role,
-                p.bank_name::text as bank_name,
                 p.occupation::text as occupation,
                 p.city::text as city,
                 p.gender::text as gender,
@@ -175,7 +173,7 @@ export class AdminService {
                 SELECT 
                     p.id, p.full_name, p.phone, p.role::text as role,
                     p.created_at, p.updated_at, p.balance::text as balance,
-                    p.iban, p.bank_name::text as bank_name,
+                    p.iban,
                     p.tc_identity_number, p.city::text as city,
                     p.gender::text as gender, p.occupation::text as occupation,
                     u.email
