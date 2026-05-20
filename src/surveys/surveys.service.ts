@@ -1564,6 +1564,9 @@ export class SurveysService {
     // Trigger Supabase Edge Function
     const supabaseUrl = this.configService.get('SUPABASE_FUNCTION_URL');
     const supabaseSecret = this.configService.get('SUPABASE_DISPATCH_SECRET');
+    const supabaseServiceKey = this.configService.get(
+      'SUPABASE_SERVICE_ROLE_KEY',
+    );
 
     if (
       supabaseUrl &&
@@ -1576,6 +1579,12 @@ export class SurveysService {
           headers: {
             'Content-Type': 'application/json',
             'x-survey-dispatch-secret': supabaseSecret,
+            ...(supabaseServiceKey
+              ? {
+                  Authorization: `Bearer ${supabaseServiceKey}`,
+                  apikey: supabaseServiceKey,
+                }
+              : {}),
           },
           body: JSON.stringify({ surveyId, userIds: overrideUserIds }), // Send overrideUserIds if present
         });
