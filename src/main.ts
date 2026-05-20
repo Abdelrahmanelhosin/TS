@@ -18,7 +18,9 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('NestJS Backend API')
-    .setDescription('The backend API documentation for Web, Mobile, and Admin Dashboard')
+    .setDescription(
+      'The backend API documentation for Web, Mobile, and Admin Dashboard',
+    )
     .setVersion('1.0')
     .addBearerAuth()
     .build();

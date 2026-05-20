@@ -7,4 +7,4 @@ import { SurveysService } from './surveys.service';
   providers: [SurveysService],
   exports: [SurveysService],
 })
-export class SurveysModule { }
+export class SurveysModule {}

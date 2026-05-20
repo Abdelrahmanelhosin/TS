@@ -4,16 +4,18 @@ import 'dotenv/config';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
-    constructor() {
-        super({});
-    }
+  constructor() {
+    super({});
+  }
 
-    async onModuleInit() {
-        try {
-            await this.$connect();
-            console.log('Database connected successfully');
-        } catch (e) {
-            console.warn('Could not connect to database on startup. Application is running in "Offline" mode (Swagger still available).');
-        }
+  async onModuleInit() {
+    try {
+      await this.$connect();
+      console.log('Database connected successfully');
+    } catch (e) {
+      console.warn(
+        'Could not connect to database on startup. Application is running in "Offline" mode (Swagger still available).',
+      );
     }
+  }
 }

@@ -4,28 +4,34 @@ import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class AdminService {
-    constructor(
-        private prisma: PrismaService,
-        private mailService: MailService,
-    ) { }
+  constructor(
+    private prisma: PrismaService,
+    private mailService: MailService,
+  ) {}
 
-    async getAllUsers(skip: number = 0, take: number = 100, search?: string, role?: string) {
-        let whereClause = '';
-        const params: any[] = [];
+  async getAllUsers(
+    skip: number = 0,
+    take: number = 100,
+    search?: string,
+    role?: string,
+  ) {
+    let whereClause = '';
+    const params: any[] = [];
 
-        if (search) {
-            whereClause += ` AND (p.full_name ILIKE $1 OR p.phone ILIKE $2 OR u.email ILIKE $3)`;
-            params.push(`%${search}%`, `%${search}%`, `%${search}%`);
-        }
+    if (search) {
+      whereClause += ` AND (p.full_name ILIKE $1 OR p.phone ILIKE $2 OR u.email ILIKE $3)`;
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
 
-        if (role) {
-            whereClause += ` AND p.role = $${params.length + 1}`;
-            params.push(role);
-        }
+    if (role) {
+      whereClause += ` AND p.role = $${params.length + 1}`;
+      params.push(role);
+    }
 
-        const users = await this.prisma.$queryRawUnsafe<any[]>(`
+    const users = await this.prisma.$queryRawUnsafe<any[]>(
+      `
             SELECT 
-                p.id, p.full_name, p.phone, p.iban, p.tc_identity_number,
+                p.id, p.full_name, p.phone, p.iban, p.full_name_bank, p.tc_identity_number,
                 p.balance::text as balance,
                 p.created_at, p.updated_at, p.birth_date, p.video_conference_optin, p.email_verified,
                 p.education_level::text as education_level,
@@ -42,30 +48,46 @@ export class AdminService {
                 p.position::text as position,
                 u.email
             FROM public.profiles p
-            JOIN auth.users u ON p.id = u.id
+            LEFT JOIN auth.users u ON p.id = u.id
             WHERE 1=1 ${whereClause}
             ORDER BY p.created_at DESC
             LIMIT ${take} OFFSET ${skip}
-        `, ...params);
+        `,
+      ...params,
+    );
 
-        const totalCountRes = await this.prisma.$queryRawUnsafe<any[]>(`
+    const totalCountRes = await this.prisma.$queryRawUnsafe<any[]>(
+      `
             SELECT COUNT(*)::int as count FROM public.profiles p 
-            JOIN auth.users u ON p.id = u.id
+            LEFT JOIN auth.users u ON p.id = u.id
             WHERE 1=1 ${whereClause}
-        `, ...params);
+        `,
+      ...params,
+    );
 
-        const items = users.map(u => ({
-            ...u,
-            users: { email: u.email }
-        }));
+    const items = users.map((u) => {
+      const { email, ...profileData } = u;
+      return {
+        id: u.id,
+        name: u.full_name || 'İsimsiz',
+        email: u.email || 'E-posta Yok',
+        role: u.role,
+        users: { email: u.email },
+        profile: {
+          ...profileData,
+          name: u.full_name,
+        },
+      };
+    });
 
-        return { items, total: totalCountRes[0]?.count || 0 };
-    }
+    return { items, total: totalCountRes[0]?.count || 0 };
+  }
 
-    async getUserDetails(id: string) {
-        const profiles = await this.prisma.$queryRawUnsafe<any[]>(`
+  async getUserDetails(id: string) {
+    const profiles = await this.prisma.$queryRawUnsafe<any[]>(
+      `
             SELECT 
-                p.id, p.full_name, p.phone, p.iban, p.tc_identity_number,
+                p.id, p.full_name, p.phone, p.iban, p.full_name_bank, p.tc_identity_number,
                 p.balance::text as balance,
                 p.created_at, p.updated_at, p.birth_date, p.video_conference_optin, p.email_verified,
                 p.education_level::text as education_level,
@@ -82,44 +104,63 @@ export class AdminService {
                 p.position::text as position,
                 u.email
             FROM public.profiles p
-            JOIN auth.users u ON p.id = u.id
+            LEFT JOIN auth.users u ON p.id = u.id
             WHERE p.id = $1::uuid
-        `, id);
+        `,
+      id,
+    );
 
-        if (!profiles || profiles.length === 0) throw new NotFoundException('User profile not found');
-        const profile = {
-            ...profiles[0],
-            users: { email: profiles[0].email }
-        };
+    if (!profiles || profiles.length === 0)
+      throw new NotFoundException('User profile not found');
 
-        const userSurveys = await this.prisma.surveys.findMany({
-            where: { creator_id: id }
-        });
+    const u = profiles[0];
+    const { email, ...profileData } = u;
 
-        return { ...profile, surveys: userSurveys };
-    }
+    const profile = {
+      id: u.id,
+      name: u.full_name,
+      email: u.email,
+      role: u.role,
+      users: { email: u.email },
+      profile: {
+        ...profileData,
+        name: u.full_name,
+      },
+    };
 
-    async assignRole(id: string, role: string) {
-        return this.prisma.$executeRawUnsafe(`
+    const userSurveys = await this.prisma.surveys.findMany({
+      where: { creator_id: id },
+    });
+
+    return { ...profile, surveys: userSurveys };
+  }
+
+  async assignRole(id: string, role: string) {
+    return this.prisma.$executeRawUnsafe(
+      `
             UPDATE public.profiles SET role = $1::user_role WHERE id = $2::uuid
-        `, role, id);
-    }
+        `,
+      role,
+      id,
+    );
+  }
 
-    async setResearchPermission(id: string, is_researcher: boolean) {
-        const role = is_researcher ? 'researcher' : 'user';
-        return this.assignRole(id, role);
-    }
+  async setResearchPermission(id: string, is_researcher: boolean) {
+    const role = is_researcher ? 'researcher' : 'user';
+    return this.assignRole(id, role);
+  }
 
-    async getDashboardInit() {
-        // Multi-query optimization for dashboard speed
-        const [stats, pendingRes, recentSrv, allSurveys, usersRes, usersListRes] = await Promise.all([
-            // Stats
-            this.prisma.$queryRawUnsafe<any[]>(`
+  async getDashboardInit() {
+    // Multi-query optimization for dashboard speed
+    const [stats, pendingRes, recentSrv, allSurveys, usersRes, usersListRes] =
+      await Promise.all([
+        // Stats
+        this.prisma.$queryRawUnsafe<any[]>(`
                 SELECT status::text as status, count(*)::int as count 
                 FROM public.surveys GROUP BY status
             `),
-            // Pending Surveys for Approval
-            this.prisma.$queryRawUnsafe<any[]>(`
+        // Pending Surveys for Approval
+        this.prisma.$queryRawUnsafe<any[]>(`
                 SELECT 
                     s.id, s.title, s.description, s.survey_link, s.completion_code,
                     s.platform::text as platform, s.reward_amount::text as reward_amount,
@@ -138,15 +179,15 @@ export class AdminService {
                 WHERE s.status = 'pending'
                 ORDER BY s.created_at DESC LIMIT 20
             `),
-            // Recent Surveys for Activities
-            this.prisma.$queryRawUnsafe<any[]>(`
+        // Recent Surveys for Activities
+        this.prisma.$queryRawUnsafe<any[]>(`
                 SELECT s.id, s.title, s.status::text as status, s.created_at, p.full_name as user_name
                 FROM public.surveys s
                 JOIN public.profiles p ON s.creator_id = p.id
                 ORDER BY s.created_at DESC LIMIT 10
             `),
-            // All Surveys - explicit columns only (no s.* to avoid enum casting issues)
-            this.prisma.$queryRawUnsafe<any[]>(`
+        // All Surveys - explicit columns only (no s.* to avoid enum casting issues)
+        this.prisma.$queryRawUnsafe<any[]>(`
                 SELECT 
                     s.id, s.title, s.description, s.survey_link, s.completion_code,
                     s.platform::text as platform, s.reward_amount::text as reward_amount,
@@ -164,90 +205,121 @@ export class AdminService {
                 JOIN public.profiles p ON s.creator_id = p.id
                 ORDER BY s.created_at DESC LIMIT 50
             `),
-            // User counts
-            this.prisma.$queryRawUnsafe<any[]>(`
+        // User counts
+        this.prisma.$queryRawUnsafe<any[]>(`
                 SELECT count(*)::int as count FROM public.profiles
             `),
-            // User list summary (first page)
-            this.prisma.$queryRawUnsafe<any[]>(`
+        // User list summary (first page)
+        this.prisma.$queryRawUnsafe<any[]>(`
                 SELECT 
-                    p.id, p.full_name, p.phone, p.role::text as role,
-                    p.created_at, p.updated_at, p.balance::text as balance,
-                    p.iban,
-                    p.tc_identity_number, p.city::text as city,
-                    p.gender::text as gender, p.occupation::text as occupation,
+                    p.id, p.full_name, p.phone, p.iban, p.full_name_bank, p.tc_identity_number,
+                    p.balance::text as balance,
+                    p.created_at, p.updated_at, p.birth_date, p.video_conference_optin, p.email_verified,
+                    p.education_level::text as education_level,
+                    p.household_income::text as household_income,
+                    p.marital_status::text as marital_status,
+                    p.children_count::text as children_count,
+                    p.sector_type::text as sector_type,
+                    p.work_status::text as work_status,
+                    p.role::text as role,
+                    p.occupation::text as occupation,
+                    p.city::text as city,
+                    p.gender::text as gender,
+                    p.nationality::text as nationality,
+                    p.position::text as position,
                     u.email
                 FROM public.profiles p
-                JOIN auth.users u ON p.id = u.id
+                LEFT JOIN auth.users u ON p.id = u.id
                 ORDER BY p.created_at DESC LIMIT 1000
-            `)
-        ]);
+            `),
+      ]);
 
-        const formattedStats = {
-            total: stats.reduce((acc, curr) => acc + curr.count, 0),
-            pending: stats.find(s => s.status === 'pending')?.count || 0,
-            approved: stats.find(s => s.status === 'active')?.count || 0,
-            completed: stats.find(s => s.status === 'completed')?.count || 0,
-            rejected: stats.find(s => s.status === 'rejected')?.count || 0,
-            totalUsers: usersRes[0]?.count || 0
-        };
+    const formattedStats = {
+      total: stats.reduce((acc, curr) => acc + curr.count, 0),
+      pending: stats.find((s) => s.status === 'pending')?.count || 0,
+      approved: stats.find((s) => s.status === 'active')?.count || 0,
+      completed: stats.find((s) => s.status === 'completed')?.count || 0,
+      rejected: stats.find((s) => s.status === 'rejected')?.count || 0,
+      totalUsers: usersRes[0]?.count || 0,
+    };
 
-        return {
-            stats: formattedStats,
-            pending: pendingRes.map(p => ({ 
-                ...p, 
-                users: { email: p.creator_email, profiles: { full_name: p.creator_name } } 
-            })),
-            surveys: allSurveys.map(s => ({
-                ...s,
-                users: { profiles: { full_name: s.creator_name } },
-                _count: { submissions: s.submission_count }
-            })),
-            users: {
-                items: usersListRes.map(u => ({ ...u, users: { email: u.email } })),
-                total: usersRes[0]?.count || 0
+    return {
+      stats: formattedStats,
+      pending: pendingRes.map((p) => ({
+        ...p,
+        users: {
+          email: p.creator_email,
+          profiles: { full_name: p.creator_name },
+        },
+      })),
+      surveys: allSurveys.map((s) => ({
+        ...s,
+        users: { profiles: { full_name: s.creator_name } },
+        _count: { submissions: s.submission_count },
+      })),
+      users: {
+        items: usersListRes.map((u) => {
+          const { email, ...profileData } = u;
+          return {
+            id: u.id,
+            name: u.full_name || 'İsimsiz',
+            email: u.email || 'E-posta Yok',
+            role: u.role,
+            users: { email: u.email },
+            profile: {
+              ...profileData,
+              name: u.full_name,
             },
-            activities: recentSrv.map(s => ({
-                id: s.id,
-                type: s.status === 'active' ? 'approve' : (s.status === 'completed' ? 'payout' : 'new_request'),
-                user: s.user_name || 'Sistem',
-                target: s.title,
-                time: s.created_at
-            }))
-        };
-    }
+          };
+        }),
+        total: usersRes[0]?.count || 0,
+      },
+      activities: recentSrv.map((s) => ({
+        id: s.id,
+        type:
+          s.status === 'active'
+            ? 'approve'
+            : s.status === 'completed'
+              ? 'payout'
+              : 'new_request',
+        user: s.user_name || 'Sistem',
+        target: s.title,
+        time: s.created_at,
+      })),
+    };
+  }
 
-    async sendEmail(to: string, subject: string, content: string) {
-        return this.mailService.sendEmail(to, subject, content);
-    }
+  async sendEmail(to: string, subject: string, content: string) {
+    return this.mailService.sendEmail(to, subject, content);
+  }
 
-    async easyCreateSurvey(creator_id: string, data: any) {
-        // Simple survey creation for professors
-        // Defaulting all filters to empty arrays (means "all") unless specified
-        return this.prisma.surveys.create({
-            data: {
-                title: data.title,
-                description: data.description || '',
-                survey_link: data.survey_link,
-                completion_code: `EASY-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-                platform: data.platform || 'Google Forms',
-                reward_amount: data.reward_amount || 25,
-                estimated_time: data.estimated_time || 5,
-                target_audience: data.target_audience || 100,
-                status: 'active',
-                creator_id: creator_id,
-                target_gender: data.target_gender || [],
-                target_age_group: data.target_age_group || [],
-                target_city: data.target_city || [],
-                target_education: data.target_education || [],
-                target_occupation: data.target_occupation || [],
-                target_sector: data.target_sector || [],
-                target_position: data.target_position || [],
-                target_income: data.target_income || [],
-                target_marital_status: data.target_marital_status || [],
-                target_child_count: data.target_child_count || [],
-                target_employment_status: data.target_employment_status || []
-            }
-        });
-    }
+  async easyCreateSurvey(creator_id: string, data: any) {
+    // Simple survey creation for professors
+    // Defaulting all filters to empty arrays (means "all") unless specified
+    return this.prisma.surveys.create({
+      data: {
+        title: data.title,
+        description: data.description || '',
+        survey_link: data.survey_link,
+        completion_code: `EASY-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+        platform: data.platform || 'Google Forms',
+        reward_amount: data.reward_amount || 25,
+        estimated_time: data.estimated_time || 5,
+        target_audience: data.target_audience || 100,
+        status: 'active',
+        creator_id: creator_id,
+        target_gender: data.target_gender || [],
+        target_age_group: data.target_age_group || [],
+        target_city: data.target_city || [],
+        target_education: data.target_education || [],
+        target_occupation: data.target_occupation || [],
+        target_sector: data.target_sector || [],
+        target_position: data.target_position || [],
+        target_income: data.target_income || [],
+        target_marital_status: data.target_marital_status || [],
+        target_child_count: data.target_child_count || [],
+        target_employment_status: data.target_employment_status || [],
+      },
+    });
+  }
 }

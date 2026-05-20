@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 
 async function inspectSchema() {
   try {
-    const tables = ['surveys', 'submissions'];
+    const tables = ['profiles', 'surveys', 'submissions'];
     for (const table of tables) {
       console.log(`--- Table: ${table} ---`);
       const columns = await prisma.$queryRawUnsafe<any[]>(`

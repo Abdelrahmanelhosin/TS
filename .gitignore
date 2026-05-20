@@ -23,3 +23,6 @@ yarn-error.log*
 # Prisma
 /prisma/*.db
 /prisma/*.db-journal
+
+# React dashboard build
+/admin-dashboard/build/

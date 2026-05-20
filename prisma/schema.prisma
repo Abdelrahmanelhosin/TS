@@ -4,9 +4,10 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  schemas  = ["auth", "public"]
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["auth", "public"]
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -404,63 +405,63 @@ model sso_providers {
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 /// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
 model users {
-  instance_id                    String?                          @db.Uuid
-  id                             String                           @id @db.Uuid
-  aud                            String?                          @db.VarChar(255)
-  role                           String?                          @db.VarChar(255)
-  email                          String?                          @db.VarChar(255)
-  encrypted_password             String?                          @db.VarChar(255)
-  email_confirmed_at             DateTime?                        @db.Timestamptz(6)
-  invited_at                     DateTime?                        @db.Timestamptz(6)
-  confirmation_token             String?                          @db.VarChar(255)
-  confirmation_sent_at           DateTime?                        @db.Timestamptz(6)
-  recovery_token                 String?                          @db.VarChar(255)
-  recovery_sent_at               DateTime?                        @db.Timestamptz(6)
-  email_change_token_new         String?                          @db.VarChar(255)
-  email_change                   String?                          @db.VarChar(255)
-  email_change_sent_at           DateTime?                        @db.Timestamptz(6)
-  last_sign_in_at                DateTime?                        @db.Timestamptz(6)
-  raw_app_meta_data              Json?
-  raw_user_meta_data             Json?
-  is_super_admin                 Boolean?
-  created_at                     DateTime?                        @db.Timestamptz(6)
-  updated_at                     DateTime?                        @db.Timestamptz(6)
-  phone                          String?                          @unique
-  phone_confirmed_at             DateTime?                        @db.Timestamptz(6)
-  phone_change                   String?                          @default("")
-  phone_change_token             String?                          @default("") @db.VarChar(255)
-  phone_change_sent_at           DateTime?                        @db.Timestamptz(6)
-  confirmed_at                   DateTime?                        @default(dbgenerated("LEAST(email_confirmed_at, phone_confirmed_at)")) @db.Timestamptz(6)
-  email_change_token_current     String?                          @default("") @db.VarChar(255)
-  email_change_confirm_status    Int?                             @default(0) @db.SmallInt
-  banned_until                   DateTime?                        @db.Timestamptz(6)
-  reauthentication_token         String?                          @default("") @db.VarChar(255)
-  reauthentication_sent_at       DateTime?                        @db.Timestamptz(6)
-  is_sso_user                    Boolean                          @default(false)
-  deleted_at                     DateTime?                        @db.Timestamptz(6)
-  is_anonymous                   Boolean                          @default(false)
-  identities                     identities[]
-  mfa_factors                    mfa_factors[]
-  oauth_authorizations           oauth_authorizations[]
-  oauth_consents                 oauth_consents[]
-  one_time_tokens                one_time_tokens[]
-  sessions                       sessions[]
-  webauthn_challenges            webauthn_challenges[]
-  webauthn_credentials           webauthn_credentials[]
-  ai_messages                    ai_messages[]
-  audit_logs                     audit_logs[]
-  device_tokens                  device_tokens[]
-  profiles                       profiles?
-  submissions                    submissions[]
-  survey_email_deliveries        survey_email_deliveries[]
-  survey_notification_deliveries survey_notification_deliveries[]
-  surveys                        surveys[]
+  instance_id                               String?                                     @db.Uuid
+  id                                        String                                      @id @db.Uuid
+  aud                                       String?                                     @db.VarChar(255)
+  role                                      String?                                     @db.VarChar(255)
+  email                                     String?                                     @db.VarChar(255)
+  encrypted_password                        String?                                     @db.VarChar(255)
+  email_confirmed_at                        DateTime?                                   @db.Timestamptz(6)
+  invited_at                                DateTime?                                   @db.Timestamptz(6)
+  confirmation_token                        String?                                     @db.VarChar(255)
+  confirmation_sent_at                      DateTime?                                   @db.Timestamptz(6)
+  recovery_token                            String?                                     @db.VarChar(255)
+  recovery_sent_at                          DateTime?                                   @db.Timestamptz(6)
+  email_change_token_new                    String?                                     @db.VarChar(255)
+  email_change                              String?                                     @db.VarChar(255)
+  email_change_sent_at                      DateTime?                                   @db.Timestamptz(6)
+  last_sign_in_at                           DateTime?                                   @db.Timestamptz(6)
+  raw_app_meta_data                         Json?
+  raw_user_meta_data                        Json?
+  is_super_admin                            Boolean?
+  created_at                                DateTime?                                   @db.Timestamptz(6)
+  updated_at                                DateTime?                                   @db.Timestamptz(6)
+  phone                                     String?                                     @unique
+  phone_confirmed_at                        DateTime?                                   @db.Timestamptz(6)
+  phone_change                              String?                                     @default("")
+  phone_change_token                        String?                                     @default("") @db.VarChar(255)
+  phone_change_sent_at                      DateTime?                                   @db.Timestamptz(6)
+  confirmed_at                              DateTime?                                   @default(dbgenerated("LEAST(email_confirmed_at, phone_confirmed_at)")) @db.Timestamptz(6)
+  email_change_token_current                String?                                     @default("") @db.VarChar(255)
+  email_change_confirm_status               Int?                                        @default(0) @db.SmallInt
+  banned_until                              DateTime?                                   @db.Timestamptz(6)
+  reauthentication_token                    String?                                     @default("") @db.VarChar(255)
+  reauthentication_sent_at                  DateTime?                                   @db.Timestamptz(6)
+  is_sso_user                               Boolean                                     @default(false)
+  deleted_at                                DateTime?                                   @db.Timestamptz(6)
+  is_anonymous                              Boolean                                     @default(false)
+  identities                                identities[]
+  mfa_factors                               mfa_factors[]
+  oauth_authorizations                      oauth_authorizations[]
+  oauth_consents                            oauth_consents[]
+  one_time_tokens                           one_time_tokens[]
+  sessions                                  sessions[]
+  webauthn_challenges                       webauthn_challenges[]
+  webauthn_credentials                      webauthn_credentials[]
+  ai_messages                               ai_messages[]
+  audit_logs                                audit_logs[]
+  device_tokens                             device_tokens[]
+  profiles                                  profiles?
+  submission_status_notification_deliveries submission_status_notification_deliveries[]
+  submissions                               submissions[]
+  survey_email_deliveries                   survey_email_deliveries[]
+  survey_notification_deliveries            survey_notification_deliveries[]
+  surveys                                   surveys[]
 
   @@index([instance_id])
   @@index([is_anonymous])
   @@schema("auth")
 }
-
 
 model webauthn_challenges {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -491,7 +492,7 @@ model webauthn_credentials {
   created_at       DateTime  @default(now()) @db.Timestamptz(6)
   updated_at       DateTime  @default(now()) @db.Timestamptz(6)
   last_used_at     DateTime? @db.Timestamptz(6)
-  users            users?    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users            users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([user_id])
   @@schema("auth")
@@ -549,6 +550,7 @@ model profiles {
   phone                  String?
   balance                Decimal?              @default(0.00) @db.Decimal(10, 2)
   iban                   String?
+  full_name_bank         String?
   created_at             DateTime?             @default(now()) @db.Timestamptz(6)
   updated_at             DateTime?             @default(now()) @db.Timestamptz(6)
   birth_date             DateTime?             @db.Date
@@ -578,11 +580,11 @@ model submissions {
   user_id         String                @db.Uuid
   survey_id       String                @db.Uuid
   status          submission_status?    @default(pending)
-  reject_reason   String?
   updated_at      DateTime?             @default(now()) @db.Timestamptz(6)
   metadata        Json?                 @default("{}")
   created_at      DateTime?             @db.Timestamptz(6)
   payement_status payement_status_enum? @default(odeme_bekliyor)
+  reject_reason   String?
   surveys         surveys               @relation(fields: [survey_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users           users                 @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -668,6 +670,27 @@ model surveys {
   @@schema("public")
 }
 
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model submission_status_notification_deliveries {
+  id                  BigInt    @id @default(autoincrement())
+  submission_id       String
+  user_id             String    @db.Uuid
+  device_token        String
+  status              String
+  provider            String    @default("fcm")
+  notification_title  String
+  notification_body   String
+  provider_message_id String?
+  error_message       String?
+  sent_at             DateTime? @db.Timestamptz(6)
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  users               users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([submission_id, user_id, device_token, status], map: "submission_status_notification_delivery_unique_idx")
+  @@schema("public")
+}
+
 enum aal_level {
   aal1
   aal2
@@ -749,7 +772,6 @@ enum age_group_enum {
   @@schema("public")
 }
 
-
 enum child_count_enum {
   C0      @map("0")
   C1      @map("1")
@@ -814,21 +836,21 @@ enum household_income_level {
 }
 
 enum income_enum {
-  I0_40000      @map("0_40000")
-  I40001_80000  @map("40001_80000")
-  I80001_120000 @map("80001_120000")
+  I0_40000       @map("0_40000")
+  I40001_80000   @map("40001_80000")
+  I80001_120000  @map("80001_120000")
   I120001_160000 @map("120001_160000")
-  uzeri @map("160001_uzeri")
+  uzeri          @map("160001_uzeri")
 
   @@schema("public")
 }
 
 enum income_level_type {
-  I0_40000      @map("0_40000")
-  I40001_80000  @map("40001_80000")
-  I80001_120000 @map("80001_120000")
+  I0_40000       @map("0_40000")
+  I40001_80000   @map("40001_80000")
+  I80001_120000  @map("80001_120000")
   I120001_160000 @map("120001_160000")
-  uzeri @map("160001_uzeri")
+  uzeri          @map("160001_uzeri")
 
   @@schema("public")
 }
@@ -1083,6 +1105,22 @@ enum work_status_type {
   calisiyor
   calismiyor
   emekli
+
+  @@schema("public")
+}
+
+enum bank_name_type {
+  Akbank
+  Denizbank
+  Garanti_BBVA       @map("Garanti BBVA")
+  Halkbank
+  Kuveyt_Turk        @map("Kuveyt Turk")
+  QNB_Finansbank     @map("QNB Finansbank")
+  Turkiye_Is_Bankasi @map("Turkiye Is Bankasi")
+  VakifBank
+  Yapi_Kredi         @map("Yapi Kredi")
+  Ziraat_Bankasi     @map("Ziraat Bankasi")
+  Diger
 
   @@schema("public")
 }

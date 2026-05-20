@@ -7,7 +7,7 @@ import { SurveysModule } from './surveys/surveys.module';
 import { AdminModule } from './admin/admin.module';
 import { SupabaseModule } from './supabase/supabase.module';
 import { MailModule } from './mail/mail.module';
-// import { AiModule } from './ai/ai.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -20,11 +20,11 @@ import { MailModule } from './mail/mail.module';
     SurveysModule,
     AdminModule,
     // SupabaseModule,
-    // AiModule,
+    AiModule,
     SupabaseModule,
     MailModule,
   ],
   controllers: [],
   providers: [],
 })
-export class AppModule { }
+export class AppModule {}

@@ -11,7 +11,9 @@ export class MailService {
     if (apiKey) {
       this.resend = new Resend(apiKey);
     } else {
-      console.warn('RESEND_API_KEY is missing. Mail functionality will be disabled.');
+      console.warn(
+        'RESEND_API_KEY is missing. Mail functionality will be disabled.',
+      );
       this.resend = null;
     }
   }
@@ -43,7 +45,7 @@ export class MailService {
         message: error.message,
         name: error.name,
         stack: error.stack,
-        apiKeyPrefix: this.configService.get('RESEND_API_KEY')?.substring(0, 3)
+        apiKeyPrefix: this.configService.get('RESEND_API_KEY')?.substring(0, 3),
       });
       throw error;
     }
